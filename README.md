@@ -1,2 +1,2 @@
-# photography
-My personal photography archive
+# digital archive
+My personal digital archive
