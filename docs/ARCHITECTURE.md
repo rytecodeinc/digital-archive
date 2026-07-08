@@ -732,13 +732,17 @@ Do these in the Cloudflare / DB consoles. No app code required yet.
 
 ### A. Cloudflare account (you have this)
 
-1. **Create an R2 bucket** e.g. `travel-archive` (private).
+1. **Create an R2 bucket** — use a short internal name, **not** a hostname.
+   - Good: `travel-archive`, `photography-media`, `rina-photos`
+   - Avoid: `photos.digital-archive.pages.dev` (that looks like a site URL; R2 bucket names are not domains)
+   - Rules: lowercase, digits, hyphens; globally unique within R2; keep it stable (renaming later is painful)
+   - Public URLs come from **Pages** (`*.pages.dev`) or an R2 **custom domain** you attach later — separate from the bucket’s internal name
 2. **Create an API token** with R2 read/write for that bucket (for local/dev and Workers bindings).
 3. **Note account ID** (R2 S3 endpoint uses it).
-4. Optionally enable **R2 public access / custom domain** later for public derivatives only — keep originals private.
+4. Optionally enable **R2 public access / custom domain** later for public derivatives only — keep originals private. Example media host later: `media.yourdomain.com` → same bucket; bucket name can stay `travel-archive`.
 5. Plan to create (when coding starts):
    - **Worker** for API
-   - **Pages** project for the web UI
+   - **Pages** project for the web UI (this is what gets `something.pages.dev`)
    - **Queue** for thumbnail jobs (can wait until phase 2)
 
 ### B. Postgres (pick one free tier)
