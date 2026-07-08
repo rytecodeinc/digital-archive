@@ -332,12 +332,14 @@ albums 0..1── cover → media
 Single bucket (or one private + one public derivatives bucket). Keys are content-addressable where possible:
 
 ```
-r2://travel-archive/
+r2://media/
   originals/{archive_id}/{yyyy}/{mm}/{media_id}/{content_hash}.{ext}
   derivatives/{archive_id}/{media_id}/thumb.webp
   derivatives/{archive_id}/{media_id}/preview.webp
   derivatives/{archive_id}/{media_id}/poster.jpg
 ```
+
+Prefer **one** bucket named something general like `media` (or `digital-archive-media` if you want the repo name reflected). Do **not** create separate `photos` and `videos` buckets — type lives in the DB (`media.type`) and in key prefixes, not in bucket sprawl.
 
 Rules:
 
@@ -733,9 +735,10 @@ Do these in the Cloudflare / DB consoles. No app code required yet.
 ### A. Cloudflare account (you have this)
 
 1. **Create one R2 bucket** for all media — **not** separate `photos` and `videos` buckets.
-   - Good names: `travel-archive`, `photography-media`, `rina-photos`
-   - Avoid hostname-style names like `photos.digital-archive.pages.dev` (bucket names are not domains)
-   - Avoid splitting by type (`photos` + later `videos`): one library, one GC/CDN/auth path; object **keys** already separate concerns (`originals/...`, `derivatives/...`, and `media.type` in the DB)
+   - **Recommended name: `media`** (or `digital-archive-media` to match the repo). Short and future-proof when MP4 lands.
+   - Do **not** use `photos` now and add `videos` later — that splits one library across buckets, doubles bindings/GC/CDN config, and fights the “one file, many albums” model.
+   - Avoid hostname-style names like `photos.digital-archive.pages.dev` (bucket names are not domains / Pages hosts)
+   - Object **keys** already separate concerns (`originals/...`, `derivatives/...`); DB column `media.type` distinguishes photo vs video
    - Rules: lowercase, digits, hyphens; keep the name stable (renaming later is painful)
    - Public site URLs come from **Pages** (`*.pages.dev`); optional later media host e.g. `media.yourdomain.com` → same bucket
 2. **Create an API token** with R2 read/write for that bucket (for local/dev and Workers bindings).
