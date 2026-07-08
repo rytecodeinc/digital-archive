@@ -21,7 +21,7 @@ This document is the design source of truth before implementation.
 | Public trip URLs | Human paths like `/2026/malaysia` (year + location); optional deeper date paths later |
 | v1 scope | Photos only (JPEG/HEIC); upload + private timeline like Google Photos. Video/MP4 and public albums follow |
 
-Non-goals for v1: Google Photos library sync, multi-owner collaboration, face recognition, social graphs, native apps, video processing.
+Non-goals for v1: Google OAuth, Google Photos library sync, multi-owner collaboration, face recognition, social graphs, native Swift app, video processing.
 
 ### Product decisions (locked from owner)
 
@@ -31,7 +31,9 @@ Non-goals for v1: Google Photos library sync, multi-owner collaboration, face re
 | Google Photos | No automatic sync (API no longer allows full-library access). Optional later: Google Takeout import tool, or Photos Picker for manual selection |
 | Hosting | **Not GitHub Pages alone** (static-only). Frontend on Cloudflare Pages (or GH Pages) + API/Workers + R2 + Postgres. Free `*.pages.dev` / Worker subdomain until a custom domain exists |
 | Library size | ~20GB; mainly JPEG/HEIC (+ MP4 later). Fits comfortably in R2 |
-| Ownership | Single owner now; schema supports `archives.owner_user_id` + transfer flow later |
+| Ownership | Single owner now (`rinarasia@icloud.com`); schema supports `archives.owner_user_id` + transfer flow later |
+| Auth (v1) | Email/password or magic link — **no Google OAuth yet** |
+| Client strategy | **Web app first** (mobile-responsive); optional native (Swift) companion later sharing the same API |
 | Public paths | Prefer `/year/location` (e.g. `/2026/malaysia`). Date-granular paths are optional deep links, not the primary album URL |
 | v1 | Photos-only upload + owner timeline |
 
@@ -66,7 +68,7 @@ Non-goals for v1: Google Photos library sync, multi-owner collaboration, face re
 | Object storage | Cloudflare R2 | S3-compatible, no egress fees to Cloudflare |
 | CDN | R2 custom domain via Cloudflare | Media never streams through the API |
 | Metadata DB | Postgres via Hyperdrive (Neon/Supabase/etc.) | Millions of rows, rich indexes, joins for albums |
-| Auth | Google OAuth (login identity only) + session cookies | OAuth ≠ Photos sync; identity for the single owner |
+| Auth | Email + password (or magic link) session cookies for v1 | No Google OAuth for now; bootstrap owner `rinarasia@icloud.com` |
 | Frontend host | Cloudflare Pages (recommended) | SPA/SSR with HTTPS subdomain; not limited like GitHub Pages |
 | Async work | Cloudflare Queues + Workers | Thumbnail / video poster generation after upload |
 | Cache | Cache API + CDN cache for public album payloads | Cut repeat metadata hits for viewers |
@@ -121,14 +123,14 @@ Postgres. UUIDs for public IDs; `bigint` internal keys optional. Timestamps in U
 
 ### 4.1 `users`
 
-Users authenticate (e.g. Google OAuth). Ownership of the archive is a separate concept so it can be transferred later.
+Users authenticate with email (password or magic link in v1). Ownership of the archive is a separate concept so it can be transferred later. Google OAuth can be added later as an alternate login without changing ownership.
 
 ```sql
 create table users (
   id              uuid primary key default gen_random_uuid(),
-  email           citext not null unique,
+  email           citext not null unique,  -- v1 owner: rinarasia@icloud.com
   display_name    text not null,
-  google_sub      text unique,   -- Google OAuth subject; null if other providers later
+  password_hash   text,          -- required if password auth; null if magic-link-only
   avatar_url      text,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
@@ -516,11 +518,11 @@ AND album.visibility = 'public' (or valid share token for unlisted)
 
 | Role | How authenticated | Capabilities |
 |---|---|---|
-| Archive **owner** | Google OAuth → session; `archives.owner_user_id` | Upload; edit metadata; delete media; create/edit/delete albums; add/remove/reorder; view timeline; publish; initiate ownership transfer |
-| Logged-in non-owner | Google OAuth → session | No archive mutations until they accept a transfer (or future collaborator roles) |
+| Archive **owner** | Email login → session; `archives.owner_user_id` | Upload; edit metadata; delete media; create/edit/delete albums; add/remove/reorder; view timeline; publish; initiate ownership transfer |
+| Logged-in non-owner | Email login → session | No archive mutations until they accept a transfer (or future collaborator roles) |
 | `viewer` | None (logged out) | Read public trip pages + slideshow. **No timeline. No mutations.** |
 
-v1: bootstrap the first Google login as archive owner. Later: Sheets-style transfer via `ownership_transfers` (invite → accept → swap `owner_user_id`).
+v1: seed user `rinarasia@icloud.com` as archive owner. Later: Sheets-style transfer via `ownership_transfers` (invite → accept → swap `owner_user_id`). Google OAuth optional later for login convenience only.
 
 ### 8.2 Capability matrix
 
@@ -636,11 +638,11 @@ Viewer never sees date-grouped “entire life” UI or APIs.
 
 ## 13. Implementation phases (guidance only)
 
-1. **Schema + Google OAuth + R2 presign + photo upload + timeline list** — private Photos-like archive on phone/desktop.  
+1. **Schema + email auth + R2 presign + photo upload + timeline list** — private Photos-like archive on phone/desktop browsers.  
 2. **HEIC → display derivatives** — thumbs/previews for performant UI.  
 3. **Albums / trips (`year` + `location`)** — curation without duplication.  
 4. **Public trip pages + slideshow** — viewer surface; lock down timeline.  
-5. **Ownership transfer, Takeout import, video, caching/GC** — harden and expand.
+5. **Ownership transfer, Takeout import, video, optional Google login, optional native app** — harden and expand.
 
 ---
 
@@ -653,16 +655,18 @@ Viewer never sees date-grouped “entire life” UI or APIs.
 | Timeline vs albums | Timeline = all media; albums = curated subsets | Matches Google Photos library vs albums mental model |
 | Viewer access | Public trip-scoped APIs only | Hides internal timeline |
 | Upload/delivery | Direct device upload via presigned R2 + CDN | Phone/computer ingest; minimizes backend |
-| Google Photos | Login OAuth only; no library sync | Google removed full-library API access (2025) |
+| Auth (v1) | Email + password/magic link; owner `rinarasia@icloud.com` | No Google OAuth for now |
+| Google Photos | No library sync; optional Takeout import later | Google removed full-library API access (2025) |
+| Client | Responsive web first; optional Swift app later | Same API; faster v1; phone upload via mobile browser |
 | Hosting | Cloudflare Pages + Workers + R2 (not GH Pages alone) | Needs API, auth, and object storage |
-| Ownership | `archives.owner_user_id` + transfer table | Single owner now; Sheets-style transfer later |
+| Ownership | `archives.owner_user_id` + transfer table; seed owner email above | Single owner now; Sheets-style transfer later |
 | Metadata DB | Postgres | Scale + indexes |
 | Deletes | Soft delete + async R2 GC | Safe album/CDN consistency |
 | v1 media | Photos (JPEG/HEIC) only | Defer video pipeline |
 
 ---
 
-## 15. Hosting, Google Photos, and URL notes
+## 15. Hosting, Google Photos, client choice, and URL notes
 
 ### 15.1 Can we self-host on GitHub Pages?
 
@@ -684,34 +688,99 @@ Viewer never sees date-grouped “entire life” UI or APIs.
 
 GitHub Pages could host **only** a static marketing shell; the real app should live on Pages/Workers. When you pick a domain, point DNS at Cloudflare and keep the same Workers/R2 backend.
 
-### 15.2 Google OAuth vs Google Photos sync
+### 15.2 Web app vs Swift mobile app (recommendation)
 
-- **Google OAuth for login:** yes — identify the owner.
-- **Auto-download their Google Photos library:** **no** (not reliably). Since March 2025, Google Photos Library API no longer grants third-party apps access to a user’s existing library; only app-created content (or the interactive Picker for manual picks).
-- **Bulk import path:** Google Takeout (or local folders from phone/computer) → upload into this app. Optional later: a Takeout zip importer; not required for v1 if the user uploads directly.
-- **Ongoing ingest:** camera roll / file picker on phone and desktop in the web app (v1).
+**Build a responsive web app first.** Add a Swift (iOS) companion later only if you need native camera-roll UX, background upload, or App Store distribution.
 
-### 15.3 Public URL granularity
+| | Web (recommended v1) | Native Swift first |
+|---|---|---|
+| Phone upload | Yes — mobile Safari/Chrome file/camera picker → R2 | Yes — Photos framework |
+| Desktop upload | Yes | Needs a separate Mac/web client |
+| Public trip pages `/2026/malaysia` | Natural fit | Awkward as primary surface |
+| Timeline like Google Photos | Achievable in browser | Also fine, but slower to ship |
+| Backend | Same Workers + R2 + Postgres | Same — native still needs this API |
+| Cost / speed to v1 | One codebase | iOS + still need web for public/desktop |
+| Later native app | Call the same API | Already native; still need web for viewers |
+
+**Why not Swift-first:** the product needs a public web surface, desktop upload, and owner timeline. A Swift-only app cannot replace that. A good mobile web upload flow covers ~20GB personal ingest without App Store review. Native becomes valuable later for: multi-select from Photos with better HEIC handling, background uploads on cellular, offline queue, widgets.
+
+**Architecture implication:** keep a stable JSON API so a future Swift app is a new client, not a rewrite.
+
+### 15.3 Google login vs Google Photos sync
+
+- **Google OAuth for login:** deferred — v1 uses email auth for `rinarasia@icloud.com`.
+- **Auto-download Google Photos library:** **no** (API no longer allows full-library third-party sync).
+- **Bulk import path:** Google Takeout or local folders → upload into this app (optional later).
+- **Ongoing ingest:** camera roll / file picker on phone and desktop in the **web** app (v1).
+
+### 15.4 Public URL granularity
 
 **Primary:** `/{year}/{location}` → `/2026/malaysia`  
 Maps 1:1 to an album/trip row (`year` + `location_slug`).
 
 **Optional later:** filter or deep-link by day without changing album identity, e.g. `/2026/malaysia?on=2026-03-14`. Full `/{year}/{month}/{day}/{location}` paths are possible but noisier and collide when a trip spans many days — prefer year+location as the canonical public page.
 
-### 15.4 ~20GB library
+### 15.5 ~20GB library
 
 Well within R2. Expect roughly 20GB originals + a fraction for WebP thumbs/previews. HEIC should be accepted on upload and normalized to JPEG/WebP derivatives for browser display.
 
 ---
 
-## 16. Open points for UI phase (intentionally deferred)
+## 16. Owner setup checklist (before coding)
+
+Do these in the Cloudflare / DB consoles. No app code required yet.
+
+### A. Cloudflare account (you have this)
+
+1. **Create an R2 bucket** e.g. `travel-archive` (private).
+2. **Create an API token** with R2 read/write for that bucket (for local/dev and Workers bindings).
+3. **Note account ID** (R2 S3 endpoint uses it).
+4. Optionally enable **R2 public access / custom domain** later for public derivatives only — keep originals private.
+5. Plan to create (when coding starts):
+   - **Worker** for API
+   - **Pages** project for the web UI
+   - **Queue** for thumbnail jobs (can wait until phase 2)
+
+### B. Postgres (pick one free tier)
+
+1. Create a project on **Neon** or **Supabase**.
+2. Copy the **connection string** (pooled + direct).
+3. You will not run migrations until coding starts; just have an empty DB ready.
+
+### C. Owner identity
+
+1. Confirm login email: **`rinarasia@icloud.com`** (seeded as sole archive owner).
+2. Decide v1 auth style when we implement: **password** (simplest) or **magic link** (needs email sending via Resend/Mailgun/etc.). Recommendation: **password for v1** to avoid email-provider setup.
+
+### D. Not needed yet
+
+- Custom domain / DNS  
+- Google Cloud OAuth client  
+- Apple Developer account / Swift project  
+- GitHub Pages  
+- Video pipeline  
+
+### E. Secrets you will provide when coding starts
+
+| Secret | Source |
+|---|---|
+| `DATABASE_URL` | Neon/Supabase |
+| R2 bucket name, account ID, access key, secret key | Cloudflare R2 |
+| `SESSION_SECRET` | Generate random string |
+| Owner password (or set on first login) | You choose |
+
+---
+
+## 17. Open points for UI phase (intentionally deferred)
 
 - Visual design of album pages and slideshow chrome  
 - Exact owner timeline grouping (by day/trip) — can be client-side from `sort_at`  
 - Map view, trip entities beyond year/location albums  
 - Video (MP4) upload + posters  
 - Google Takeout bulk importer  
+- Google OAuth login  
 - Ownership transfer UI  
+- Native Swift companion app  
 - Custom domain cutover from `*.pages.dev`  
 
 The data model and APIs above are sufficient to implement those later without migrating object storage.

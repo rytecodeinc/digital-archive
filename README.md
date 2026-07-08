@@ -8,10 +8,13 @@ See **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** for the complete system d
 
 ### Locked product decisions
 
-- **Upload:** directly from phone or computer in the web app (not Google Photos auto-sync)
-- **Hosting:** Cloudflare Pages + Workers + R2 (GitHub Pages alone cannot run the API/storage)
-- **Owner:** single transferable archive owner (Google OAuth login)
+- **Client:** responsive **web app first**; optional Swift companion later (same API)
+- **Upload:** phone or computer via the web app → Cloudflare R2
+- **Auth (v1):** email login (no Google OAuth yet); owner `rinarasia@icloud.com`
+- **Hosting:** Cloudflare Pages + Workers + R2 (not GitHub Pages alone)
 - **v1:** photos only (JPEG/HEIC), private timeline like Google Photos
 - **Public URLs (later):** `/{year}/{location}` e.g. `/2026/malaysia`
+
+Owner setup checklist (Cloudflare R2, Postgres, secrets) is in the architecture doc §16.
 
 Implementation has not started; this repository currently holds the architecture only.
