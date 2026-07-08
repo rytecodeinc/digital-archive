@@ -16,8 +16,24 @@ This document is the design source of truth before implementation.
 | Minimize backend calls | Presigned uploads, CDN delivery, batch mutations, client caches |
 | Owner vs viewer | Owner: timeline + full CRUD. Viewer (logged out): public albums / slideshow / single media only — never the internal timeline |
 | Album UI later | Album presentation is API-ready; visual design is out of scope here |
+| Direct device upload | Owner uploads from phone or computer via the web app (camera roll / file picker → R2); no Google Photos auto-sync |
+| Single owner + transferable | One active archive owner at a time; ownership can later transfer to another user (Sheets-style) |
+| Public trip URLs | Human paths like `/2026/malaysia` (year + location); optional deeper date paths later |
+| v1 scope | Photos only (JPEG/HEIC); upload + private timeline like Google Photos. Video/MP4 and public albums follow |
 
-Non-goals for v1: multi-owner collaboration, face recognition, social sharing graphs, mobile native apps (web-first).
+Non-goals for v1: Google Photos library sync, multi-owner collaboration, face recognition, social graphs, native apps, video processing.
+
+### Product decisions (locked from owner)
+
+| Topic | Decision |
+|---|---|
+| Ingest | Direct upload from phone/computer in the web app |
+| Google Photos | No automatic sync (API no longer allows full-library access). Optional later: Google Takeout import tool, or Photos Picker for manual selection |
+| Hosting | **Not GitHub Pages alone** (static-only). Frontend on Cloudflare Pages (or GH Pages) + API/Workers + R2 + Postgres. Free `*.pages.dev` / Worker subdomain until a custom domain exists |
+| Library size | ~20GB; mainly JPEG/HEIC (+ MP4 later). Fits comfortably in R2 |
+| Ownership | Single owner now; schema supports `archives.owner_user_id` + transfer flow later |
+| Public paths | Prefer `/year/location` (e.g. `/2026/malaysia`). Date-granular paths are optional deep links, not the primary album URL |
+| v1 | Photos-only upload + owner timeline |
 
 ---
 
@@ -50,7 +66,8 @@ Non-goals for v1: multi-owner collaboration, face recognition, social sharing gr
 | Object storage | Cloudflare R2 | S3-compatible, no egress fees to Cloudflare |
 | CDN | R2 custom domain via Cloudflare | Media never streams through the API |
 | Metadata DB | Postgres via Hyperdrive (Neon/Supabase/etc.) | Millions of rows, rich indexes, joins for albums |
-| Auth | Session cookies (owner) + optional magic link / OAuth | Single owner account type for v1 |
+| Auth | Google OAuth (login identity only) + session cookies | OAuth ≠ Photos sync; identity for the single owner |
+| Frontend host | Cloudflare Pages (recommended) | SPA/SSR with HTTPS subdomain; not limited like GitHub Pages |
 | Async work | Cloudflare Queues + Workers | Thumbnail / video poster generation after upload |
 | Cache | Cache API + CDN cache for public album payloads | Cut repeat metadata hits for viewers |
 
@@ -104,19 +121,40 @@ Postgres. UUIDs for public IDs; `bigint` internal keys optional. Timestamps in U
 
 ### 4.1 `users`
 
-Single-owner product, but keep a real user table for sessions and future roles.
+Users authenticate (e.g. Google OAuth). Ownership of the archive is a separate concept so it can be transferred later.
 
 ```sql
 create table users (
   id              uuid primary key default gen_random_uuid(),
   email           citext not null unique,
   display_name    text not null,
-  role            text not null check (role in ('owner')),  -- extend later: 'editor'
-  password_hash   text,          -- or omit if magic-link / OAuth only
+  google_sub      text unique,   -- Google OAuth subject; null if other providers later
+  avatar_url      text,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
+
+-- One personal archive for v1; owner_user_id is transferable
+create table archives (
+  id              uuid primary key default gen_random_uuid(),
+  owner_user_id   uuid not null references users(id),
+  title           text not null default 'Travel Archive',
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table ownership_transfers (
+  id              uuid primary key default gen_random_uuid(),
+  archive_id      uuid not null references archives(id) on delete cascade,
+  from_user_id    uuid not null references users(id),
+  to_user_id      uuid not null references users(id),
+  status          text not null check (status in ('pending', 'accepted', 'revoked', 'expired')),
+  created_at      timestamptz not null default now(),
+  accepted_at     timestamptz
+);
 ```
+
+**Permission check:** “Is owner?” = `archives.owner_user_id = session.user_id`. Transfer updates that FK (and writes an audit row); media/R2 keys stay put.
 
 ### 4.2 `sessions`
 
@@ -142,7 +180,8 @@ create type media_status as enum ('pending_upload', 'processing', 'ready', 'fail
 
 create table media (
   id                uuid primary key default gen_random_uuid(),
-  owner_id          uuid not null references users(id),
+  archive_id        uuid not null references archives(id),
+  uploaded_by       uuid not null references users(id),
 
   type              media_type not null,
   status            media_status not null default 'pending_upload',
@@ -185,16 +224,16 @@ create table media (
 
 -- Timeline: owner browses newest/oldest
 create index media_timeline_idx
-  on media (owner_id, sort_at desc, id desc)
+  on media (archive_id, sort_at desc, id desc)
   where deleted_at is null and status = 'ready';
 
 -- Dedupe uploads
-create unique index media_owner_hash_uidx
-  on media (owner_id, content_hash)
+create unique index media_archive_hash_uidx
+  on media (archive_id, content_hash)
   where content_hash is not null and deleted_at is null;
 
-create unique index media_owner_client_local_uidx
-  on media (owner_id, client_local_id)
+create unique index media_archive_client_local_uidx
+  on media (archive_id, client_local_id)
   where client_local_id is not null;
 ```
 
@@ -207,12 +246,18 @@ create type album_visibility as enum ('private', 'unlisted', 'public');
 
 create table albums (
   id              uuid primary key default gen_random_uuid(),
-  owner_id        uuid not null references users(id),
-  slug            text not null,              -- public URL key, unique per owner
-  title           text not null,
+  archive_id      uuid not null references archives(id),
+  -- Public path segments: /{year}/{location_slug}  e.g. /2026/malaysia
+  year            int not null,
+  location_slug   text not null,              -- lowercase kebab-case
+  title           text not null,              -- display: "Malaysia"
   description     text,
   visibility      album_visibility not null default 'private',
   cover_media_id  uuid references media(id) on delete set null,
+
+  -- Optional trip window for deeper links / filters (not required in URL)
+  start_date      date,
+  end_date        date,
 
   -- Denormalized for list endpoints (avoid count(*) on every request)
   media_count     int not null default 0,
@@ -223,7 +268,7 @@ create table albums (
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
 
-  unique (owner_id, slug)
+  unique (archive_id, year, location_slug)
 );
 
 create index albums_public_list_idx
@@ -249,7 +294,7 @@ create index album_media_media_id_idx
   on album_media (media_id);
 ```
 
-**Invariant:** `media.owner_id` must equal `albums.owner_id` for every membership (enforce in API; optional DB trigger).
+**Invariant:** `media.archive_id` must equal `albums.archive_id` for every membership (enforce in API; optional DB trigger).
 
 ### 4.6 Optional: `share_links` (v1.1)
 
@@ -268,8 +313,10 @@ create table share_links (
 ### 4.7 Entity relationship (summary)
 
 ```
-users 1──* media
-users 1──* albums
+users 1──* sessions
+users 1──* archives (as owner; transferable)
+archives 1──* media
+archives 1──* albums
 albums *──* media          via album_media
 albums 0..1── cover → media
 ```
@@ -284,10 +331,10 @@ Single bucket (or one private + one public derivatives bucket). Keys are content
 
 ```
 r2://travel-archive/
-  originals/{owner_id}/{yyyy}/{mm}/{media_id}/{content_hash}.{ext}
-  derivatives/{owner_id}/{media_id}/thumb.webp
-  derivatives/{owner_id}/{media_id}/preview.webp
-  derivatives/{owner_id}/{media_id}/poster.jpg
+  originals/{archive_id}/{yyyy}/{mm}/{media_id}/{content_hash}.{ext}
+  derivatives/{archive_id}/{media_id}/thumb.webp
+  derivatives/{archive_id}/{media_id}/preview.webp
+  derivatives/{archive_id}/{media_id}/poster.jpg
 ```
 
 Rules:
@@ -433,10 +480,12 @@ No originals in list responses.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/public/albums` | optional index of public albums |
-| `GET` | `/api/public/albums/:slug` | album manifest: metadata + ordered media page |
-| `GET` | `/api/public/albums/:slug/media` | paginated / cursor for large albums |
-| `GET` | `/api/public/albums/:slug/media/:mediaId` | single item in album context |
-| `GET` | `/api/public/albums/:slug/slideshow` | optimized payload: ids + preview URLs + dims |
+| `GET` | `/api/public/trips/:year/:location` | album manifest for `/2026/malaysia` |
+| `GET` | `/api/public/trips/:year/:location/media` | paginated members |
+| `GET` | `/api/public/trips/:year/:location/media/:mediaId` | single item in trip context |
+| `GET` | `/api/public/trips/:year/:location/slideshow` | slim slideshow payload |
+
+Public **page** routes (frontend): `/{year}/{location}` → e.g. `/2026/malaysia`. Optional deep link later: `/{year}/{location}?date=2026-03-14` or `/{year}/{mm}/{dd}/{location}` if day-level URLs are needed; primary album identity remains year + location.
 
 Explicitly **absent**: `/api/public/timeline`, `/api/public/media` (unscoped).
 
@@ -467,10 +516,11 @@ AND album.visibility = 'public' (or valid share token for unlisted)
 
 | Role | How authenticated | Capabilities |
 |---|---|---|
-| `owner` | Session | Upload; edit metadata; delete media; create/edit/delete albums; add/remove/reorder album media; view timeline; publish visibility |
-| `viewer` | None (logged out) | Read public album metadata + media URLs; slideshow; individual public media. **No timeline. No mutations.** |
+| Archive **owner** | Google OAuth → session; `archives.owner_user_id` | Upload; edit metadata; delete media; create/edit/delete albums; add/remove/reorder; view timeline; publish; initiate ownership transfer |
+| Logged-in non-owner | Google OAuth → session | No archive mutations until they accept a transfer (or future collaborator roles) |
+| `viewer` | None (logged out) | Read public trip pages + slideshow. **No timeline. No mutations.** |
 
-v1 assumes a single owner account. If “account type” later expands, add `role` values and map the same capability matrix; do not invent a second media table.
+v1: bootstrap the first Google login as archive owner. Later: Sheets-style transfer via `ownership_transfers` (invite → accept → swap `owner_user_id`).
 
 ### 8.2 Capability matrix
 
@@ -488,7 +538,7 @@ v1 assumes a single owner account. If “account type” later expands, add `rol
 | Slideshow / single public item | ✓ | ✓ |
 | Download original | ✓ | ✗ (optional later: allow on public) |
 
-Enforce on every owner route: valid session + `users.role = 'owner'`. Enforce on public routes: album visibility, never trust client-provided “isPublic.”
+Enforce on every owner route: valid session + `session.user_id = archives.owner_user_id`. Enforce on public routes: album visibility, never trust client-provided “isPublic.”
 
 ---
 
@@ -526,8 +576,8 @@ Curation never leaves the archive. Removing from album keeps the timeline entry.
 ### 9.4 Viewer — browse & slideshow
 
 ```
-Open /a/:slug
-  → GET public album manifest (cached)
+Open /2026/malaysia
+  → GET public trip manifest (cached)
   → grid or start slideshow
   → advance using in-memory list; fetch next page only near end
   → open single media route for deep links / share
@@ -586,11 +636,11 @@ Viewer never sees date-grouped “entire life” UI or APIs.
 
 ## 13. Implementation phases (guidance only)
 
-1. **Schema + auth + R2 presign + timeline list** — archive works like a private Photos library.  
-2. **Derivative worker** — thumbs/previews for performant UI.  
-3. **Albums CRUD + album_media** — curation without duplication.  
-4. **Public album + slideshow APIs** — viewer surface; lock down timeline.  
-5. **Caching, batch endpoints, GC** — harden for large libraries.
+1. **Schema + Google OAuth + R2 presign + photo upload + timeline list** — private Photos-like archive on phone/desktop.  
+2. **HEIC → display derivatives** — thumbs/previews for performant UI.  
+3. **Albums / trips (`year` + `location`)** — curation without duplication.  
+4. **Public trip pages + slideshow** — viewer surface; lock down timeline.  
+5. **Ownership transfer, Takeout import, video, caching/GC** — harden and expand.
 
 ---
 
@@ -599,21 +649,69 @@ Viewer never sees date-grouped “entire life” UI or APIs.
 | Decision | Choice | Rationale |
 |---|---|---|
 | Canonical store | `media` table + R2 originals | Single source of truth for history |
-| Albums | M2M join with positions | Zero file duplication; many albums per asset |
+| Albums / trips | M2M join; public URL `/{year}/{location}` | Zero file duplication; human trip URLs |
 | Timeline vs albums | Timeline = all media; albums = curated subsets | Matches Google Photos library vs albums mental model |
-| Viewer access | Public album-scoped APIs only | Hides internal timeline |
-| Upload/delivery | Presigned R2 + CDN | Minimizes backend bandwidth and calls |
-| Metadata DB | Postgres | Scale to millions of rows with proper indexes |
+| Viewer access | Public trip-scoped APIs only | Hides internal timeline |
+| Upload/delivery | Direct device upload via presigned R2 + CDN | Phone/computer ingest; minimizes backend |
+| Google Photos | Login OAuth only; no library sync | Google removed full-library API access (2025) |
+| Hosting | Cloudflare Pages + Workers + R2 (not GH Pages alone) | Needs API, auth, and object storage |
+| Ownership | `archives.owner_user_id` + transfer table | Single owner now; Sheets-style transfer later |
+| Metadata DB | Postgres | Scale + indexes |
 | Deletes | Soft delete + async R2 GC | Safe album/CDN consistency |
+| v1 media | Photos (JPEG/HEIC) only | Defer video pipeline |
 
 ---
 
-## 15. Open points for UI phase (intentionally deferred)
+## 15. Hosting, Google Photos, and URL notes
+
+### 15.1 Can we self-host on GitHub Pages?
+
+**Not as the whole app.** GitHub Pages serves static files only (HTML/JS/CSS). This archive needs:
+
+- Authenticated API (login, timeline, mutations)
+- Presigned R2 uploads
+- Postgres metadata
+- Optional background thumbnail jobs
+
+**Practical options without buying a domain yet:**
+
+| Piece | Free / cheap host |
+|---|---|
+| Web UI | Cloudflare Pages → `https://<project>.pages.dev` |
+| API | Cloudflare Workers → `https://<worker>.<subdomain>.workers.dev` |
+| Media | R2 (+ optional custom domain later) |
+| DB | Neon or Supabase free tier |
+
+GitHub Pages could host **only** a static marketing shell; the real app should live on Pages/Workers. When you pick a domain, point DNS at Cloudflare and keep the same Workers/R2 backend.
+
+### 15.2 Google OAuth vs Google Photos sync
+
+- **Google OAuth for login:** yes — identify the owner.
+- **Auto-download their Google Photos library:** **no** (not reliably). Since March 2025, Google Photos Library API no longer grants third-party apps access to a user’s existing library; only app-created content (or the interactive Picker for manual picks).
+- **Bulk import path:** Google Takeout (or local folders from phone/computer) → upload into this app. Optional later: a Takeout zip importer; not required for v1 if the user uploads directly.
+- **Ongoing ingest:** camera roll / file picker on phone and desktop in the web app (v1).
+
+### 15.3 Public URL granularity
+
+**Primary:** `/{year}/{location}` → `/2026/malaysia`  
+Maps 1:1 to an album/trip row (`year` + `location_slug`).
+
+**Optional later:** filter or deep-link by day without changing album identity, e.g. `/2026/malaysia?on=2026-03-14`. Full `/{year}/{month}/{day}/{location}` paths are possible but noisier and collide when a trip spans many days — prefer year+location as the canonical public page.
+
+### 15.4 ~20GB library
+
+Well within R2. Expect roughly 20GB originals + a fraction for WebP thumbs/previews. HEIC should be accepted on upload and normalized to JPEG/WebP derivatives for browser display.
+
+---
+
+## 16. Open points for UI phase (intentionally deferred)
 
 - Visual design of album pages and slideshow chrome  
 - Exact owner timeline grouping (by day/trip) — can be client-side from `sort_at`  
-- Map view, trip entities, or auto-albums  
-- Video transcoding / HLS  
-- Multi-device upload agents  
+- Map view, trip entities beyond year/location albums  
+- Video (MP4) upload + posters  
+- Google Takeout bulk importer  
+- Ownership transfer UI  
+- Custom domain cutover from `*.pages.dev`  
 
 The data model and APIs above are sufficient to implement those later without migrating object storage.
