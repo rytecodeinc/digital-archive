@@ -762,14 +762,19 @@ Do these in the Cloudflare / DB consoles. No app code required yet.
 - GitHub Pages  
 - Video pipeline  
 
-### E. Secrets you will provide when coding starts
+### E. Secrets needed to start coding
 
-| Secret | Source |
+| Secret | Status / source |
 |---|---|
-| `DATABASE_URL` | Neon/Supabase |
-| R2 bucket `digital-archive-media`, account ID, access key, secret key | Cloudflare R2 |
-| `SESSION_SECRET` | Generate random string |
-| Owner password (or set on first login) | You choose |
+| R2 bucket name | Done: `digital-archive-media` |
+| Owner email | Done: `rinarasia@icloud.com` |
+| Owner app login password | Chosen by owner (store only in secrets / env — never commit) |
+| Postgres host | Supabase (chosen) |
+| `DATABASE_URL` | **Still needed** — Supabase → Project Settings → Database → URI (use the **pooler** URI for Workers if offered) |
+| Cloudflare **Account ID** | **Still needed** — Dashboard overview or R2 token confirmation page |
+| R2 **Access Key ID** | **Still needed** — from the User API token you created |
+| R2 **Secret Access Key** | **Still needed** — shown once at token creation |
+| `SESSION_SECRET` | Can be generated at coding time |
 
 ---
 
