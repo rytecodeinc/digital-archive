@@ -173,3 +173,178 @@ albumRoutes.get("/:id", async (c) => {
   const album = await mapAlbumRow(c.env, rows[0] as Record<string, unknown>);
   return c.json({ album });
 });
+
+albumRoutes.get("/:id/media", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+  const limit = Math.min(Number(c.req.query("limit") || 100), 200);
+  const cursor = c.req.query("cursor"); // position|media_id
+
+  const albumRows = await sql(c.env)`
+    select id from albums
+    where id = ${id} and archive_id = ${owner.archive.id}
+    limit 1
+  `;
+  if (!albumRows.length) return c.json({ error: "not found" }, 404);
+
+  let rows;
+  if (cursor) {
+    const [position, mediaId] = cursor.split("|");
+    rows = await sql(c.env)`
+      select
+        m.id, m.type, m.status, m.sort_at, m.mime_type, m.width, m.height,
+        m.caption, m.r2_original_key, m.r2_thumb_key, m.r2_preview_key,
+        m.taken_at, am.position
+      from album_media am
+      join media m on m.id = am.media_id
+      where am.album_id = ${id}
+        and m.deleted_at is null
+        and m.status = 'ready'
+        and (am.position, am.media_id) > (${position}::bigint, ${mediaId}::uuid)
+      order by am.position asc, am.media_id asc
+      limit ${limit}
+    `;
+  } else {
+    rows = await sql(c.env)`
+      select
+        m.id, m.type, m.status, m.sort_at, m.mime_type, m.width, m.height,
+        m.caption, m.r2_original_key, m.r2_thumb_key, m.r2_preview_key,
+        m.taken_at, am.position
+      from album_media am
+      join media m on m.id = am.media_id
+      where am.album_id = ${id}
+        and m.deleted_at is null
+        and m.status = 'ready'
+      order by am.position asc, am.media_id asc
+      limit ${limit}
+    `;
+  }
+
+  const items = await Promise.all(
+    rows.map(async (row) => {
+      const key = (row.r2_thumb_key ||
+        row.r2_preview_key ||
+        row.r2_original_key) as string;
+      const thumbUrl = await presignGet(c.env, key, 3600);
+      return {
+        id: row.id as string,
+        type: row.type as string,
+        sort_at: row.sort_at as string,
+        taken_at: (row.taken_at as string | null) ?? null,
+        width: (row.width as number | null) ?? null,
+        height: (row.height as number | null) ?? null,
+        caption: (row.caption as string | null) ?? null,
+        mime_type: row.mime_type as string,
+        thumb_url: thumbUrl,
+        preview_url: thumbUrl,
+        position: Number(row.position),
+      };
+    }),
+  );
+
+  const last = rows[rows.length - 1];
+  const nextCursor =
+    rows.length === limit && last
+      ? `${last.position}|${last.id}`
+      : null;
+
+  return c.json({ items, next_cursor: nextCursor });
+});
+
+/** Attach existing archive photos to an album (no R2 copies). */
+albumRoutes.post("/:id/media/batch-add", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+
+  const body = await c.req.json<{ media_ids?: string[] }>();
+  const mediaIds = [
+    ...new Set(
+      (body.media_ids || []).filter((mediaId) => typeof mediaId === "string" && mediaId),
+    ),
+  ];
+  if (!mediaIds.length) return c.json({ error: "media_ids required" }, 400);
+  if (mediaIds.length > 200) {
+    return c.json({ error: "too many media_ids (max 200)" }, 400);
+  }
+
+  const albumRows = await sql(c.env)`
+    select id, cover_media_id from albums
+    where id = ${id} and archive_id = ${owner.archive.id}
+    limit 1
+  `;
+  if (!albumRows.length) return c.json({ error: "not found" }, 404);
+
+  const db = sql(c.env);
+  const validMedia = await db`
+    select id, type
+    from media
+    where archive_id = ${owner.archive.id}
+      and deleted_at is null
+      and status = 'ready'
+      and id in ${db(mediaIds)}
+  `;
+  if (!validMedia.length) {
+    return c.json({ ok: true, added_count: 0, added_ids: [] as string[] });
+  }
+
+  const maxPosRows = await db`
+    select coalesce(max(position), 0)::bigint as max_position
+    from album_media
+    where album_id = ${id}
+  `;
+  let nextPosition = Number(maxPosRows[0]?.max_position || 0) + 1000;
+
+  const addedIds: string[] = [];
+  let addedPhotos = 0;
+  let addedVideos = 0;
+
+  for (const media of validMedia) {
+    const mediaId = media.id as string;
+    const inserted = await db`
+      insert into album_media (album_id, media_id, position)
+      values (${id}, ${mediaId}, ${nextPosition})
+      on conflict (album_id, media_id) do nothing
+      returning media_id
+    `;
+    if (!inserted.length) continue;
+
+    addedIds.push(mediaId);
+    nextPosition += 1000;
+    if (media.type === "video") addedVideos += 1;
+    else addedPhotos += 1;
+  }
+
+  if (addedIds.length) {
+    const album = albumRows[0] as { id: string; cover_media_id: string | null };
+    if (!album.cover_media_id) {
+      await db`
+        update albums
+        set
+          cover_media_id = ${addedIds[0]},
+          media_count = media_count + ${addedIds.length},
+          photo_count = photo_count + ${addedPhotos},
+          video_count = video_count + ${addedVideos},
+          updated_at = now()
+        where id = ${id}
+      `;
+    } else {
+      await db`
+        update albums
+        set
+          media_count = media_count + ${addedIds.length},
+          photo_count = photo_count + ${addedPhotos},
+          video_count = video_count + ${addedVideos},
+          updated_at = now()
+        where id = ${id}
+      `;
+    }
+  }
+
+  return c.json({
+    ok: true,
+    added_count: addedIds.length,
+    added_ids: addedIds,
+  });
+});

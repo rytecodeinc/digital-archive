@@ -166,6 +166,21 @@ export const api = {
     }),
   album: (id: string) =>
     request<{ album: AlbumSummary }>(`/api/owner/albums/${id}`),
+  albumMedia: (id: string, cursor?: string | null) => {
+    const q = new URLSearchParams({ limit: "100" });
+    if (cursor) q.set("cursor", cursor);
+    return request<{ items: TimelineItem[]; next_cursor: string | null }>(
+      `/api/owner/albums/${id}/media?${q}`,
+    );
+  },
+  addAlbumMedia: (id: string, mediaIds: string[]) =>
+    request<{ ok: boolean; added_count: number; added_ids: string[] }>(
+      `/api/owner/albums/${id}/media/batch-add`,
+      {
+        method: "POST",
+        body: JSON.stringify({ media_ids: mediaIds }),
+      },
+    ),
 };
 
 export async function sha256Hex(file: Blob) {
