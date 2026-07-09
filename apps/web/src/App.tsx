@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { api, type User } from "./lib/api";
+import { AlbumsPage } from "./pages/AlbumsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { TimelinePage } from "./pages/TimelinePage";
 
@@ -24,6 +25,11 @@ export function App() {
     );
   }
 
+  async function onLogout() {
+    await api.logout();
+    setUser(null);
+  }
+
   return (
     <Routes>
       <Route
@@ -44,14 +50,17 @@ export function App() {
         path="/photos"
         element={
           user ? (
-            <TimelinePage
-              user={user}
-              view="photos"
-              onLogout={async () => {
-                await api.logout();
-                setUser(null);
-              }}
-            />
+            <TimelinePage user={user} view="photos" onLogout={onLogout} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/albums"
+        element={
+          user ? (
+            <AlbumsPage user={user} onLogout={onLogout} />
           ) : (
             <Navigate to="/login" replace />
           )
@@ -61,14 +70,7 @@ export function App() {
         path="/trash"
         element={
           user ? (
-            <TimelinePage
-              user={user}
-              view="trash"
-              onLogout={async () => {
-                await api.logout();
-                setUser(null);
-              }}
-            />
+            <TimelinePage user={user} view="trash" onLogout={onLogout} />
           ) : (
             <Navigate to="/login" replace />
           )

@@ -18,6 +18,24 @@ export type TimelineItem = {
   preview_url: string;
 };
 
+export type AlbumSummary = {
+  id: string;
+  year: number;
+  location_slug: string;
+  title: string;
+  description: string | null;
+  visibility: string;
+  media_count: number;
+  photo_count: number;
+  video_count: number;
+  start_date: string | null;
+  end_date: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  cover_url: string | null;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
@@ -140,6 +158,7 @@ export const api = {
         body: JSON.stringify({ ids }),
       },
     ),
+  albums: () => request<{ albums: AlbumSummary[] }>("/api/owner/albums"),
 };
 
 export async function sha256Hex(file: Blob) {

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   api,
   readImageDimensions,
@@ -9,6 +8,7 @@ import {
 } from "../lib/api";
 import { groupTimelineByDay } from "../lib/timelineGroups";
 import { JustifiedDayGrid } from "../components/JustifiedDayGrid";
+import { LibraryShell } from "../components/LibraryShell";
 import { Lightbox } from "../components/Lightbox";
 
 export type LibraryView = "photos" | "trash";
@@ -19,17 +19,6 @@ function CheckIcon() {
       <path
         fill="currentColor"
         d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"
-      />
-    </svg>
-  );
-}
-
-function PhotosIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M19 5v14H5V5h14m0-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4.86 8.86-3 3.87L9 13.14 6 17h12l-3.86-5.14z"
       />
     </svg>
   );
@@ -207,7 +196,6 @@ export function TimelinePage({
           throw new Error("Upload session incomplete");
         }
 
-        // Prefer same-origin proxy upload so browsers aren't blocked by R2 CORS.
         if (session.proxy_upload_url) {
           await api.uploadContent(session.proxy_upload_url, file, mime);
         } else if (session.upload_url && session.upload_headers) {
@@ -327,233 +315,192 @@ export function TimelinePage({
     }
   }
 
-  const initials = user.display_name?.slice(0, 1).toUpperCase() || "R";
-
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="topbar-brand">
-          <div className="brand-mark" aria-hidden="true">
-            <PhotosIcon />
-          </div>
-          <div className="brand">Digital Archive</div>
-        </div>
-        <div className="topbar-center">
-          {selectionActive ? (
-            <div className="selection-heading">
-              <button
-                className="selection-clear"
-                type="button"
-                aria-label="Clear selection"
-                title="Clear selection"
-                onClick={clearSelection}
-              >
-                <CloseIcon />
-              </button>
-              <h1 className="selection-count">{selectedCount} Selected</h1>
-            </div>
-          ) : (
-            <h1 className="page-heading">{isTrash ? "Trash" : "Photos"}</h1>
-          )}
-          {error ? (
-            <p className="topbar-message is-error" role="alert">
-              {error}
-            </p>
-          ) : status ? (
-            <p className="topbar-message" role="status">
-              {status}
-            </p>
-          ) : null}
-        </div>
-        <div className="topbar-actions">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,.heic,.heif"
-            multiple
-            hidden
-            onChange={(e) => void onFilesSelected(e.target.files)}
-          />
-          {!isTrash ? (
-            <button
-              className="icon-btn"
-              type="button"
-              aria-label={uploading ? "Uploading" : "Upload photos"}
-              title={uploading ? "Uploading…" : "Upload photos"}
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-            >
-              <UploadIcon />
-            </button>
-          ) : null}
-          {selectionActive && !isTrash ? (
-            <button
-              className="icon-btn"
-              type="button"
-              aria-label="Move selected to Trash"
-              title="Move to Trash"
-              onClick={() => void onDeleteSelected()}
-            >
-              <TrashIcon />
-            </button>
-          ) : null}
-          {selectionActive && isTrash ? (
-            <button
-              className="icon-btn"
-              type="button"
-              aria-label="Permanently delete selected"
-              title="Delete forever"
-              onClick={() => void onPurgeSelected()}
-            >
-              <TrashIcon />
-            </button>
-          ) : null}
-          <button
-            className="avatar-btn"
-            type="button"
-            title={`${user.email} · Sign out`}
-            aria-label="Sign out"
-            onClick={() => void onLogout()}
-          >
-            {initials}
-          </button>
-        </div>
-      </header>
-
-      <div className="shell-body">
-        <aside className="sidebar" aria-label="Library">
-          <nav className="sidebar-nav">
-            <Link
-              className={`sidebar-link${!isTrash ? " is-active" : ""}`}
-              to="/photos"
-              aria-current={!isTrash ? "page" : undefined}
-            >
-              <PhotosIcon />
-              <span>Photos</span>
-            </Link>
-          </nav>
-          <nav className="sidebar-footer" aria-label="Trash">
-            <Link
-              className={`sidebar-link${isTrash ? " is-active" : ""}`}
-              to="/trash"
-              aria-current={isTrash ? "page" : undefined}
-            >
-              <TrashIcon />
-              <span>Trash</span>
-            </Link>
-          </nav>
-        </aside>
-
-        <section
-          className="content-frame"
-          aria-label={isTrash ? "Trash" : "Photo timeline"}
-        >
-          <div className="content-scroll">
-            {loading ? (
-              <p className="muted content-status">
-                {isTrash ? "Loading trash…" : "Loading timeline…"}
-              </p>
-            ) : items.length === 0 ? (
-              <div className="empty">
-                {isTrash ? (
-                  <>
-                    <h2>Trash is empty</h2>
-                    <p className="muted">
-                      Photos you move to Trash will show up here. You can restore
-                      them later.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <h2>No photos yet</h2>
-                    <p className="muted">
-                      Upload from your phone or computer. Files go straight to
-                      Cloudflare R2 and appear here in chronological order.
-                    </p>
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={uploading}
-                      onClick={() => fileRef.current?.click()}
-                    >
-                      {uploading ? "Uploading…" : "Upload photos"}
-                    </button>
-                  </>
-                )}
+    <>
+      <LibraryShell
+        user={user}
+        nav={isTrash ? "trash" : "photos"}
+        contentLabel={isTrash ? "Trash" : "Photo timeline"}
+        onLogout={onLogout}
+        heading={
+          <>
+            {selectionActive ? (
+              <div className="selection-heading">
+                <button
+                  className="selection-clear"
+                  type="button"
+                  aria-label="Clear selection"
+                  title="Clear selection"
+                  onClick={clearSelection}
+                >
+                  <CloseIcon />
+                </button>
+                <h1 className="selection-count">{selectedCount} Selected</h1>
               </div>
             ) : (
+              <h1 className="page-heading">{isTrash ? "Trash" : "Photos"}</h1>
+            )}
+            {error ? (
+              <p className="topbar-message is-error" role="alert">
+                {error}
+              </p>
+            ) : status ? (
+              <p className="topbar-message" role="status">
+                {status}
+              </p>
+            ) : null}
+          </>
+        }
+        actions={
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,.heic,.heif"
+              multiple
+              hidden
+              onChange={(e) => void onFilesSelected(e.target.files)}
+            />
+            {!isTrash ? (
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label={uploading ? "Uploading" : "Upload photos"}
+                title={uploading ? "Uploading…" : "Upload photos"}
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+              >
+                <UploadIcon />
+              </button>
+            ) : null}
+            {selectionActive && !isTrash ? (
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Move selected to Trash"
+                title="Move to Trash"
+                onClick={() => void onDeleteSelected()}
+              >
+                <TrashIcon />
+              </button>
+            ) : null}
+            {selectionActive && isTrash ? (
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Permanently delete selected"
+                title="Delete forever"
+                onClick={() => void onPurgeSelected()}
+              >
+                <TrashIcon />
+              </button>
+            ) : null}
+          </>
+        }
+      >
+        {loading ? (
+          <p className="muted content-status">
+            {isTrash ? "Loading trash…" : "Loading timeline…"}
+          </p>
+        ) : items.length === 0 ? (
+          <div className="empty">
+            {isTrash ? (
               <>
-                <div className="timeline-days">
-                  {dayGroups.map((group) => {
-                    const groupIds = group.items.map((item) => item.id);
-                    const selectedInGroup = groupIds.filter((id) =>
-                      selectedIds.has(id),
-                    ).length;
-                    const allSelected =
-                      groupIds.length > 0 && selectedInGroup === groupIds.length;
-                    const someSelected = selectedInGroup > 0 && !allSelected;
-                    const showSectionCheck =
-                      hoveredSectionKey === group.key || selectedInGroup > 0;
-
-                    return (
-                      <section
-                        className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
-                        key={group.key}
-                        onMouseEnter={() => setHoveredSectionKey(group.key)}
-                        onMouseLeave={() =>
-                          setHoveredSectionKey((current) =>
-                            current === group.key ? null : current,
-                          )
-                        }
-                      >
-                        <div className="day-header-row">
-                          <button
-                            className={`section-check${allSelected ? " is-checked" : ""}${
-                              someSelected ? " is-partial" : ""
-                            }${showSectionCheck ? " is-visible" : ""}`}
-                            type="button"
-                            aria-label={
-                              allSelected
-                                ? `Deselect all photos from ${group.label}`
-                                : `Select all photos from ${group.label}`
-                            }
-                            aria-pressed={allSelected}
-                            onClick={() => toggleSection(groupIds)}
-                          >
-                            <CheckIcon />
-                          </button>
-                          <h2 className="day-header">{group.label}</h2>
-                        </div>
-                        <JustifiedDayGrid
-                          items={group.items}
-                          selectedIds={selectedIds}
-                          selectionActive={selectionActive}
-                          onToggleSelect={toggleSelect}
-                          onOpen={(item) => {
-                            const idx = items.findIndex((entry) => entry.id === item.id);
-                            if (idx >= 0) setLightboxIndex(idx);
-                          }}
-                        />
-                      </section>
-                    );
-                  })}
-                </div>
-                {nextCursor ? (
-                  <div className="load-more">
-                    <button
-                      className="btn secondary"
-                      type="button"
-                      onClick={() => void load(false)}
-                    >
-                      Load more
-                    </button>
-                  </div>
-                ) : null}
+                <h2>Trash is empty</h2>
+                <p className="muted">
+                  Photos you move to Trash will show up here. You can restore
+                  them later.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>No photos yet</h2>
+                <p className="muted">
+                  Upload from your phone or computer. Files go straight to
+                  Cloudflare R2 and appear here in chronological order.
+                </p>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {uploading ? "Uploading…" : "Upload photos"}
+                </button>
               </>
             )}
           </div>
-        </section>
-      </div>
+        ) : (
+          <>
+            <div className="timeline-days">
+              {dayGroups.map((group) => {
+                const groupIds = group.items.map((item) => item.id);
+                const selectedInGroup = groupIds.filter((id) =>
+                  selectedIds.has(id),
+                ).length;
+                const allSelected =
+                  groupIds.length > 0 && selectedInGroup === groupIds.length;
+                const someSelected = selectedInGroup > 0 && !allSelected;
+                const showSectionCheck =
+                  hoveredSectionKey === group.key || selectedInGroup > 0;
+
+                return (
+                  <section
+                    className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
+                    key={group.key}
+                    onMouseEnter={() => setHoveredSectionKey(group.key)}
+                    onMouseLeave={() =>
+                      setHoveredSectionKey((current) =>
+                        current === group.key ? null : current,
+                      )
+                    }
+                  >
+                    <div className="day-header-row">
+                      <button
+                        className={`section-check${allSelected ? " is-checked" : ""}${
+                          someSelected ? " is-partial" : ""
+                        }${showSectionCheck ? " is-visible" : ""}`}
+                        type="button"
+                        aria-label={
+                          allSelected
+                            ? `Deselect all photos from ${group.label}`
+                            : `Select all photos from ${group.label}`
+                        }
+                        aria-pressed={allSelected}
+                        onClick={() => toggleSection(groupIds)}
+                      >
+                        <CheckIcon />
+                      </button>
+                      <h2 className="day-header">{group.label}</h2>
+                    </div>
+                    <JustifiedDayGrid
+                      items={group.items}
+                      selectedIds={selectedIds}
+                      selectionActive={selectionActive}
+                      onToggleSelect={toggleSelect}
+                      onOpen={(item) => {
+                        const idx = items.findIndex((entry) => entry.id === item.id);
+                        if (idx >= 0) setLightboxIndex(idx);
+                      }}
+                    />
+                  </section>
+                );
+              })}
+            </div>
+            {nextCursor ? (
+              <div className="load-more">
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={() => void load(false)}
+                >
+                  Load more
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </LibraryShell>
 
       {lightboxIndex !== null ? (
         <Lightbox
@@ -567,6 +514,6 @@ export function TimelinePage({
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }

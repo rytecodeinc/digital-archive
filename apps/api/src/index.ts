@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Env } from "./types";
 import { authRoutes } from "./routes/auth";
+import { albumRoutes } from "./routes/albums";
 import { mediaRoutes } from "./routes/media";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -26,6 +27,7 @@ app.get("/api/health", (c) =>
 
 app.route("/api/auth", authRoutes);
 app.route("/api/owner/media", mediaRoutes);
+app.route("/api/owner/albums", albumRoutes);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((err, c) => {
