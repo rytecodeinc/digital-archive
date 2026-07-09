@@ -331,7 +331,7 @@ export function AlbumDetailPage({
                 <CloseIcon />
               </button>
               <h1 className="selection-count">
-                {picking
+                {picking && selectedCount === 0
                   ? `Select photos to add to ${album?.title || "album"}`
                   : `${selectedCount} Selected`}
               </h1>
