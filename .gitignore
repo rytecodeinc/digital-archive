@@ -9,3 +9,4 @@ dist/
 .DS_Store
 .vite/
 coverage/
+apps/web/tsconfig.tsbuildinfo
