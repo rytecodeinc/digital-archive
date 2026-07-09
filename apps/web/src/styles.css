@@ -403,6 +403,9 @@ a {
   align-items: center;
   gap: 0;
   min-height: 2rem;
+  width: fit-content;
+  max-width: 100%;
+  cursor: default;
 }
 
 .day-header {

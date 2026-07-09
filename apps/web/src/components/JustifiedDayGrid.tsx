@@ -19,14 +19,12 @@ export function JustifiedDayGrid({
   selectionActive,
   onOpen,
   onToggleSelect,
-  onSectionHoverChange,
 }: {
   items: TimelineItem[];
   selectedIds: Set<string>;
   selectionActive: boolean;
   onOpen: (item: TimelineItem) => void;
   onToggleSelect: (id: string) => void;
-  onSectionHoverChange?: (hovered: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -55,12 +53,7 @@ export function JustifiedDayGrid({
   );
 
   return (
-    <div
-      className="justified-grid"
-      ref={containerRef}
-      onMouseEnter={() => onSectionHoverChange?.(true)}
-      onMouseLeave={() => onSectionHoverChange?.(false)}
-    >
+    <div className="justified-grid" ref={containerRef}>
       {width === 0
         ? null
         : rows.map((row, rowIndex) => (

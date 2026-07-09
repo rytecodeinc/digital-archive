@@ -361,12 +361,6 @@ export function TimelinePage({
                           selectedIds={selectedIds}
                           selectionActive={selectionActive}
                           onToggleSelect={toggleSelect}
-                          onSectionHoverChange={(hovered) => {
-                            setHoveredSectionKey((current) => {
-                              if (hovered) return group.key;
-                              return current === group.key ? null : current;
-                            });
-                          }}
                           onOpen={(item) => {
                             const idx = items.findIndex((entry) => entry.id === item.id);
                             if (idx >= 0) setLightboxIndex(idx);
