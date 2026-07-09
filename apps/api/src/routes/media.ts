@@ -597,3 +597,30 @@ mediaRoutes.delete("/:id", async (c) => {
   if (!result.length) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true });
 });
+
+/** Soft-delete many items into Trash (recoverable until hard GC). */
+mediaRoutes.post("/batch-delete", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const body = await c.req.json<{ ids?: string[] }>();
+  const ids = [...new Set((body.ids || []).filter((id) => typeof id === "string" && id))];
+  if (!ids.length) return c.json({ error: "ids required" }, 400);
+  if (ids.length > 200) return c.json({ error: "too many ids (max 200)" }, 400);
+
+  const db = sql(c.env);
+  const result = await db`
+    update media
+    set deleted_at = now(), status = 'deleted', updated_at = now()
+    where archive_id = ${owner.archive.id}
+      and deleted_at is null
+      and id in ${db(ids)}
+    returning id
+  `;
+
+  return c.json({
+    ok: true,
+    deleted_count: result.length,
+    deleted_ids: result.map((row) => row.id as string),
+  });
+});

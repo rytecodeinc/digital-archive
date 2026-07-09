@@ -96,6 +96,14 @@ export const api = {
     ),
   deleteMedia: (id: string) =>
     request<{ ok: boolean }>(`/api/owner/media/${id}`, { method: "DELETE" }),
+  batchDeleteMedia: (ids: string[]) =>
+    request<{ ok: boolean; deleted_count: number; deleted_ids: string[] }>(
+      "/api/owner/media/batch-delete",
+      {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      },
+    ),
 };
 
 export async function sha256Hex(file: Blob) {

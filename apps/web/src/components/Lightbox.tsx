@@ -69,7 +69,7 @@ export function Lightbox({
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this photo from the archive?")) return;
+    if (!confirm("Move this photo to Trash?")) return;
     setBusy("delete");
     setActionError(null);
     try {
