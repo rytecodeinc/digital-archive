@@ -348,3 +348,87 @@ albumRoutes.post("/:id/media/batch-add", async (c) => {
     added_ids: addedIds,
   });
 });
+
+/** Detach photos from an album (keeps them in the Photos library). */
+albumRoutes.post("/:id/media/batch-remove", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+
+  const body = await c.req.json<{ media_ids?: string[] }>();
+  const mediaIds = [
+    ...new Set(
+      (body.media_ids || []).filter((mediaId) => typeof mediaId === "string" && mediaId),
+    ),
+  ];
+  if (!mediaIds.length) return c.json({ error: "media_ids required" }, 400);
+  if (mediaIds.length > 200) {
+    return c.json({ error: "too many media_ids (max 200)" }, 400);
+  }
+
+  const albumRows = await sql(c.env)`
+    select id, cover_media_id from albums
+    where id = ${id} and archive_id = ${owner.archive.id}
+    limit 1
+  `;
+  if (!albumRows.length) return c.json({ error: "not found" }, 404);
+
+  const db = sql(c.env);
+  const typeRows = await db`
+    select am.media_id, m.type
+    from album_media am
+    join media m on m.id = am.media_id
+    where am.album_id = ${id}
+      and am.media_id in ${db(mediaIds)}
+  `;
+  if (!typeRows.length) {
+    return c.json({ ok: true, removed_count: 0, removed_ids: [] as string[] });
+  }
+
+  let removedPhotos = 0;
+  let removedVideos = 0;
+  const removedIds = typeRows.map((row) => {
+    if (row.type === "video") removedVideos += 1;
+    else removedPhotos += 1;
+    return row.media_id as string;
+  });
+
+  await db`
+    delete from album_media
+    where album_id = ${id}
+      and media_id in ${db(removedIds)}
+  `;
+
+  const album = albumRows[0] as { id: string; cover_media_id: string | null };
+  const coverWasRemoved =
+    !!album.cover_media_id && removedIds.includes(album.cover_media_id);
+
+  let nextCover: string | null = album.cover_media_id;
+  if (coverWasRemoved) {
+    const nextCoverRows = await db`
+      select media_id
+      from album_media
+      where album_id = ${id}
+      order by position asc
+      limit 1
+    `;
+    nextCover = (nextCoverRows[0]?.media_id as string | undefined) ?? null;
+  }
+
+  await db`
+    update albums
+    set
+      cover_media_id = ${nextCover},
+      media_count = greatest(media_count - ${removedIds.length}, 0),
+      photo_count = greatest(photo_count - ${removedPhotos}, 0),
+      video_count = greatest(video_count - ${removedVideos}, 0),
+      updated_at = now()
+    where id = ${id}
+  `;
+
+  return c.json({
+    ok: true,
+    removed_count: removedIds.length,
+    removed_ids: removedIds,
+  });
+});

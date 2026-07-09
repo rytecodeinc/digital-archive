@@ -31,6 +31,17 @@ function TrashIcon() {
   );
 }
 
+function RemoveFromAlbumIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M22 13h-4v4h-2v-4h-4v-2h4V7h2v4h4v2zm-8-8H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2v-3h-2v3H4V7h10v1h2V7c0-1.1-.9-2-2-2z"
+      />
+    </svg>
+  );
+}
+
 function CloseIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
@@ -62,6 +73,8 @@ export function AlbumDetailPage({
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [adding, setAdding] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   const selectedCount = selectedIds.size;
   const selectionActive = selectedCount > 0;
@@ -91,6 +104,7 @@ export function AlbumDetailPage({
     setAlbumItems([]);
     setPicking(false);
     setSelectedIds(new Set());
+    setRemoveOpen(false);
 
     loadAlbum(albumId)
       .catch((err) => {
@@ -153,7 +167,24 @@ export function AlbumDetailPage({
 
   function clearSelection() {
     setSelectedIds(new Set());
+    setRemoveOpen(false);
   }
+
+  useEffect(() => {
+    if (!removeOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !removing) setRemoveOpen(false);
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [removeOpen, removing]);
 
   async function onDeleteFromAlbum(id: string) {
     await api.deleteMedia(id);
@@ -215,6 +246,37 @@ export function AlbumDetailPage({
     }
   }
 
+  async function confirmRemoveFromAlbum() {
+    if (!albumId || picking || !selectedCount) return;
+    setRemoving(true);
+    setError(null);
+    try {
+      const ids = [...selectedIds];
+      setStatus(
+        ids.length === 1
+          ? "Removing photo from album…"
+          : `Removing ${ids.length} photos from album…`,
+      );
+      const res = await api.removeAlbumMedia(albumId, ids);
+      await loadAlbum(albumId);
+      setSelectedIds(new Set());
+      setRemoveOpen(false);
+      setStatus(
+        res.removed_count === 0
+          ? "Selected photos were not in this album"
+          : res.removed_count === 1
+            ? "Removed 1 photo from album"
+            : `Removed ${res.removed_count} photos from album`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to remove from album",
+      );
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   async function confirmAdd() {
     if (!albumId || !selectedCount) return;
     setAdding(true);
@@ -246,6 +308,7 @@ export function AlbumDetailPage({
   }
 
   return (
+    <>
     <LibraryShell
       user={user}
       nav="albums"
@@ -318,15 +381,26 @@ export function AlbumDetailPage({
               <PlusIcon />
             </button>
             {inAlbumSelection ? (
-              <button
-                className="icon-btn"
-                type="button"
-                aria-label="Move selected to Trash"
-                title="Move to Trash"
-                onClick={() => void onDeleteSelectedFromAlbum()}
-              >
-                <TrashIcon />
-              </button>
+              <>
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Remove from album"
+                  title="Remove from album"
+                  onClick={() => setRemoveOpen(true)}
+                >
+                  <RemoveFromAlbumIcon />
+                </button>
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Move selected to Trash"
+                  title="Move to Trash"
+                  onClick={() => void onDeleteSelectedFromAlbum()}
+                >
+                  <TrashIcon />
+                </button>
+              </>
             ) : null}
           </>
         )
@@ -401,5 +475,50 @@ export function AlbumDetailPage({
         />
       )}
     </LibraryShell>
+
+      {removeOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!removing) setRemoveOpen(false);
+          }}
+        >
+          <div
+            className="confirm-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-album-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="remove-album-title">
+              {selectedCount === 1 ? "Remove item?" : `Remove ${selectedCount} items?`}
+            </h2>
+            <p className="muted">
+              You will still be able to find{" "}
+              {selectedCount === 1 ? "it" : "them"} in your Photos library
+            </p>
+            <div className="confirm-actions">
+              <button
+                className="confirm-btn"
+                type="button"
+                disabled={removing}
+                onClick={() => setRemoveOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="confirm-btn"
+                type="button"
+                disabled={removing}
+                onClick={() => void confirmRemoveFromAlbum()}
+              >
+                {removing ? "Removing…" : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

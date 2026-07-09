@@ -181,6 +181,14 @@ export const api = {
         body: JSON.stringify({ media_ids: mediaIds }),
       },
     ),
+  removeAlbumMedia: (id: string, mediaIds: string[]) =>
+    request<{ ok: boolean; removed_count: number; removed_ids: string[] }>(
+      `/api/owner/albums/${id}/media/batch-remove`,
+      {
+        method: "POST",
+        body: JSON.stringify({ media_ids: mediaIds }),
+      },
+    ),
 };
 
 export async function sha256Hex(file: Blob) {

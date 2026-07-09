@@ -747,6 +747,60 @@ a {
   margin-top: 0.5rem;
 }
 
+.confirm-card {
+  width: min(360px, 100%);
+  background: #f1f3f4;
+  border-radius: 28px;
+  box-shadow: 0 8px 28px rgba(32, 33, 36, 0.28);
+  padding: 1.35rem 1.35rem 1rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.confirm-card h2 {
+  margin: 0;
+  font-family: "Source Sans 3", system-ui, sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.confirm-card > .muted {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-top: 0.85rem;
+}
+
+.confirm-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.confirm-btn:hover:not(:disabled) {
+  background: rgba(11, 87, 208, 0.08);
+}
+
+.confirm-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* —— Lightbox —— */
 
 .lightbox {
