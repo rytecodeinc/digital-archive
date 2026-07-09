@@ -245,14 +245,46 @@ a {
   gap: 0.55rem;
 }
 
+.justified-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.justified-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  overflow: hidden;
+}
+
 .tile {
   position: relative;
-  aspect-ratio: 1;
+  flex: 0 0 auto;
   overflow: hidden;
-  border-radius: 0.65rem;
+  border-radius: 0.45rem;
   background: var(--bg2);
   border: 1px solid var(--line);
   animation: fadein 420ms ease both;
+}
+
+.tile-open {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: zoom-in;
+  background: transparent;
+  color: inherit;
+}
+
+.tile-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 @keyframes fadein {
@@ -278,16 +310,119 @@ a {
   transform: scale(1.04);
 }
 
-.tile button.delete {
+.tile .delete {
   position: absolute;
   top: 0.4rem;
   right: 0.4rem;
   opacity: 0;
   transition: opacity 160ms ease;
+  z-index: 1;
 }
 
-.tile:hover button.delete {
+.tile:hover .delete,
+.tile:focus-within .delete {
   opacity: 1;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 12, 10, 0.82);
+  backdrop-filter: blur(10px);
+  animation: lightbox-in 180ms ease;
+}
+
+@keyframes lightbox-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lightbox-chrome {
+  position: relative;
+  width: min(1200px, 100%);
+  height: min(90vh, 100%);
+  display: grid;
+  place-items: center;
+}
+
+.lightbox-figure {
+  margin: 0;
+  max-width: 100%;
+  max-height: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+}
+
+.lightbox-figure img {
+  max-width: 100%;
+  max-height: calc(90vh - 3rem);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.4rem;
+  box-shadow: var(--shadow);
+  animation: rise 220ms ease;
+}
+
+.lightbox-figure figcaption {
+  color: var(--muted);
+  text-align: center;
+}
+
+.lightbox-close,
+.lightbox-nav {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: rgba(26, 36, 32, 0.88);
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: 999px;
+  width: 2.6rem;
+  height: 2.6rem;
+  display: grid;
+  place-items: center;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+}
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.lightbox-prev {
+  left: 0;
+}
+
+.lightbox-next {
+  right: 0;
+}
+
+.lightbox-meta {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .empty {
@@ -303,16 +438,20 @@ a {
 }
 
 @media (max-width: 640px) {
-  .timeline-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.35rem;
+  .justified-grid,
+  .justified-row {
+    gap: 4px;
   }
 
   .tile {
-    border-radius: 0.4rem;
+    border-radius: 0.3rem;
   }
 
-  .tile button.delete {
+  .tile .delete {
     opacity: 1;
+  }
+
+  .lightbox-nav {
+    display: none;
   }
 }

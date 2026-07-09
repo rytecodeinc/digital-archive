@@ -7,6 +7,8 @@ import {
   type User,
 } from "../lib/api";
 import { groupTimelineByDay } from "../lib/timelineGroups";
+import { JustifiedDayGrid } from "../components/JustifiedDayGrid";
+import { Lightbox } from "../components/Lightbox";
 
 export function TimelinePage({
   user,
@@ -21,6 +23,7 @@ export function TimelinePage({
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const dayGroups = useMemo(() => groupTimelineByDay(items), [items]);
@@ -186,28 +189,14 @@ export function TimelinePage({
               {dayGroups.map((group) => (
                 <section className="day-section" key={group.key}>
                   <h2 className="day-header">{group.label}</h2>
-                  <div className="timeline-grid">
-                    {group.items.map((item, index) => (
-                      <div
-                        className="tile"
-                        key={item.id}
-                        style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}
-                      >
-                        <img
-                          src={item.thumb_url}
-                          alt={item.caption || "Archive photo"}
-                          loading="lazy"
-                        />
-                        <button
-                          className="btn danger delete"
-                          type="button"
-                          onClick={() => void onDelete(item.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <JustifiedDayGrid
+                    items={group.items}
+                    onDelete={(id) => void onDelete(id)}
+                    onOpen={(item) => {
+                      const idx = items.findIndex((entry) => entry.id === item.id);
+                      if (idx >= 0) setLightboxIndex(idx);
+                    }}
+                  />
                 </section>
               ))}
             </div>
@@ -221,6 +210,15 @@ export function TimelinePage({
           </>
         )}
       </main>
+
+      {lightboxIndex !== null ? (
+        <Lightbox
+          items={items}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
+        />
+      ) : null}
     </div>
   );
 }
