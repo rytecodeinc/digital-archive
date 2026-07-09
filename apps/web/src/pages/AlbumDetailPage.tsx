@@ -20,6 +20,17 @@ function PlusIcon() {
   );
 }
 
+function TrashIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M15 4V3H9v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5zm2 15H7V6h10v13zM9 8h2v9H9zm4 0h2v9h-2z"
+      />
+    </svg>
+  );
+}
+
 function CloseIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
@@ -164,6 +175,46 @@ export function AlbumDetailPage({
     );
   }
 
+  async function onDeleteSelectedFromAlbum() {
+    if (picking) return;
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    const label =
+      ids.length === 1
+        ? "Move 1 photo to Trash?"
+        : `Move ${ids.length} photos to Trash?`;
+    if (!confirm(label)) return;
+
+    setError(null);
+    try {
+      setStatus(
+        ids.length === 1
+          ? "Moving photo to Trash…"
+          : `Moving ${ids.length} photos to Trash…`,
+      );
+      const res = await api.batchDeleteMedia(ids);
+      const deleted = new Set(res.deleted_ids);
+      setAlbumItems((prev) => prev.filter((item) => !deleted.has(item.id)));
+      setAlbum((prev) =>
+        prev
+          ? {
+              ...prev,
+              media_count: Math.max(0, prev.media_count - res.deleted_count),
+              photo_count: Math.max(0, prev.photo_count - res.deleted_count),
+            }
+          : prev,
+      );
+      setSelectedIds(new Set());
+      setStatus(
+        res.deleted_count === 1
+          ? "Moved 1 photo to Trash"
+          : `Moved ${res.deleted_count} photos to Trash`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to move to Trash");
+    }
+  }
+
   async function confirmAdd() {
     if (!albumId || !selectedCount) return;
     setAdding(true);
@@ -255,16 +306,29 @@ export function AlbumDetailPage({
                 : "Add"}
           </button>
         ) : (
-          <button
-            className="icon-btn"
-            type="button"
-            aria-label="Add photos to album"
-            title="Add photos"
-            disabled={!album || loading}
-            onClick={() => void startPicking()}
-          >
-            <PlusIcon />
-          </button>
+          <>
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="Add photos to album"
+              title="Add photos"
+              disabled={!album || loading}
+              onClick={() => void startPicking()}
+            >
+              <PlusIcon />
+            </button>
+            {inAlbumSelection ? (
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Move selected to Trash"
+                title="Move to Trash"
+                onClick={() => void onDeleteSelectedFromAlbum()}
+              >
+                <TrashIcon />
+              </button>
+            ) : null}
+          </>
         )
       }
     >
