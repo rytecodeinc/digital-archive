@@ -321,6 +321,15 @@ export function TimelinePage({
           ) : (
             <h1 className="page-heading">{isTrash ? "Trash" : "Photos"}</h1>
           )}
+          {error ? (
+            <p className="topbar-message is-error" role="alert">
+              {error}
+            </p>
+          ) : status ? (
+            <p className="topbar-message" role="status">
+              {status}
+            </p>
+          ) : null}
         </div>
         <div className="topbar-actions">
           <input
@@ -395,9 +404,6 @@ export function TimelinePage({
           aria-label={isTrash ? "Trash" : "Photo timeline"}
         >
           <div className="content-scroll">
-            {status ? <p className="status-line">{status}</p> : null}
-            {error ? <p className="error">{error}</p> : null}
-
             {loading ? (
               <p className="muted content-status">
                 {isTrash ? "Loading trash…" : "Loading timeline…"}

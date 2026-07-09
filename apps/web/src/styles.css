@@ -112,8 +112,26 @@ a {
 .topbar-center {
   display: flex;
   align-items: center;
+  gap: 0.85rem;
   min-width: 0;
   justify-content: flex-start;
+}
+
+.topbar-message {
+  margin: 0 0 0 auto;
+  min-width: 0;
+  max-width: min(42vw, 28rem);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.topbar-message.is-error {
+  color: var(--danger);
 }
 
 .page-heading {
@@ -318,15 +336,9 @@ a {
   margin: 0.5rem 0;
 }
 
-.status-line {
-  margin: 0 0 0.75rem;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
 .error {
   color: var(--danger);
-  margin: 0 0 0.75rem;
+  margin: 0;
 }
 
 .empty {
