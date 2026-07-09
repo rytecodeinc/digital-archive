@@ -1,0 +1,415 @@
+import { Hono } from "hono";
+import type { Env } from "../types";
+import { requireOwner } from "../lib/auth";
+import { sql } from "../lib/db";
+import {
+  ALLOWED_PHOTO_MIME,
+  extFromMime,
+  headObject,
+  originalKey,
+  presignGet,
+  presignPut,
+} from "../lib/r2";
+
+export const mediaRoutes = new Hono<{ Bindings: Env }>();
+
+function hexToBytes(hex: string) {
+  const clean = hex.replace(/^0x/, "").toLowerCase();
+  if (clean.length % 2 !== 0 || !/^[0-9a-f]+$/.test(clean)) {
+    throw new Error("invalid hex");
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < clean.length; i += 2) {
+    out[i / 2] = parseInt(clean.slice(i, i + 2), 16);
+  }
+  return out;
+}
+
+mediaRoutes.post("/upload-sessions", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const body = await c.req.json<{
+    mime_type?: string;
+    byte_size?: number;
+    content_hash?: string;
+    client_local_id?: string;
+    taken_at?: string;
+    width?: number;
+    height?: number;
+  }>();
+
+  const mime = body.mime_type?.toLowerCase();
+  const byteSize = body.byte_size;
+
+  if (!mime || !ALLOWED_PHOTO_MIME.has(mime)) {
+    return c.json(
+      {
+        error: "unsupported mime_type",
+        allowed: [...ALLOWED_PHOTO_MIME],
+      },
+      400,
+    );
+  }
+  if (!byteSize || byteSize <= 0 || byteSize > 50 * 1024 * 1024) {
+    return c.json({ error: "byte_size must be 1..50MB" }, 400);
+  }
+
+  if (body.content_hash) {
+    try {
+      const hashBytes = hexToBytes(body.content_hash);
+      const existing = await sql(c.env)`
+        select id, status from media
+        where archive_id = ${owner.archive.id}
+          and content_hash = ${hashBytes}
+          and deleted_at is null
+        limit 1
+      `;
+      if (existing.length) {
+        return c.json({
+          deduped: true,
+          media_id: existing[0].id,
+          status: existing[0].status,
+        });
+      }
+    } catch {
+      return c.json({ error: "content_hash must be hex sha256" }, 400);
+    }
+  }
+
+  const mediaId = crypto.randomUUID();
+  const ext = extFromMime(mime);
+  const key = originalKey(owner.archive.id, mediaId, ext);
+  const takenAt = body.taken_at ? new Date(body.taken_at) : null;
+  if (takenAt && Number.isNaN(takenAt.getTime())) {
+    return c.json({ error: "invalid taken_at" }, 400);
+  }
+  const sortAt = (takenAt ?? new Date()).toISOString();
+  const contentHash = body.content_hash ? hexToBytes(body.content_hash) : null;
+
+  await sql(c.env)`
+    insert into media (
+      id, archive_id, uploaded_by, type, status,
+      taken_at, taken_at_source, sort_at,
+      content_hash, byte_size, mime_type, width, height,
+      r2_original_key, client_local_id
+    ) values (
+      ${mediaId},
+      ${owner.archive.id},
+      ${owner.user.id},
+      'photo',
+      'pending_upload',
+      ${takenAt ? takenAt.toISOString() : null},
+      ${takenAt ? "client" : "upload"},
+      ${sortAt},
+      ${contentHash},
+      ${byteSize},
+      ${mime},
+      ${body.width ?? null},
+      ${body.height ?? null},
+      ${key},
+      ${body.client_local_id ?? null}
+    )
+  `;
+
+  const uploadUrl = await presignPut(c.env, key, mime, byteSize);
+
+  return c.json({
+    media_id: mediaId,
+    upload_url: uploadUrl,
+    upload_headers: {
+      "Content-Type": mime,
+      "Content-Length": String(byteSize),
+    },
+    r2_key: key,
+    expires_in: 900,
+  });
+});
+
+mediaRoutes.post("/upload-sessions/batch", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const body = await c.req.json<{
+    items?: Array<{
+      mime_type?: string;
+      byte_size?: number;
+      content_hash?: string;
+      client_local_id?: string;
+      taken_at?: string;
+      width?: number;
+      height?: number;
+    }>;
+  }>();
+
+  const items = body.items ?? [];
+  if (!items.length || items.length > 50) {
+    return c.json({ error: "items must be 1..50" }, 400);
+  }
+
+  const results = [];
+  for (const item of items) {
+    const mime = item.mime_type?.toLowerCase();
+    const byteSize = item.byte_size;
+    if (!mime || !ALLOWED_PHOTO_MIME.has(mime)) {
+      results.push({ error: "unsupported mime_type", client_local_id: item.client_local_id });
+      continue;
+    }
+    if (!byteSize || byteSize <= 0 || byteSize > 50 * 1024 * 1024) {
+      results.push({ error: "invalid byte_size", client_local_id: item.client_local_id });
+      continue;
+    }
+
+    if (item.content_hash) {
+      try {
+        const hashBytes = hexToBytes(item.content_hash);
+        const existing = await sql(c.env)`
+          select id, status from media
+          where archive_id = ${owner.archive.id}
+            and content_hash = ${hashBytes}
+            and deleted_at is null
+          limit 1
+        `;
+        if (existing.length) {
+          results.push({
+            deduped: true,
+            media_id: existing[0].id,
+            status: existing[0].status,
+            client_local_id: item.client_local_id,
+          });
+          continue;
+        }
+      } catch {
+        results.push({ error: "invalid content_hash", client_local_id: item.client_local_id });
+        continue;
+      }
+    }
+
+    const mediaId = crypto.randomUUID();
+    const ext = extFromMime(mime);
+    const key = originalKey(owner.archive.id, mediaId, ext);
+    const takenAt = item.taken_at ? new Date(item.taken_at) : null;
+    const sortAt = (takenAt && !Number.isNaN(takenAt.getTime()) ? takenAt : new Date()).toISOString();
+    const contentHash = item.content_hash ? hexToBytes(item.content_hash) : null;
+
+    await sql(c.env)`
+      insert into media (
+        id, archive_id, uploaded_by, type, status,
+        taken_at, taken_at_source, sort_at,
+        content_hash, byte_size, mime_type, width, height,
+        r2_original_key, client_local_id
+      ) values (
+        ${mediaId},
+        ${owner.archive.id},
+        ${owner.user.id},
+        'photo',
+        'pending_upload',
+        ${takenAt && !Number.isNaN(takenAt.getTime()) ? takenAt.toISOString() : null},
+        ${takenAt && !Number.isNaN(takenAt.getTime()) ? "client" : "upload"},
+        ${sortAt},
+        ${contentHash},
+        ${byteSize},
+        ${mime},
+        ${item.width ?? null},
+        ${item.height ?? null},
+        ${key},
+        ${item.client_local_id ?? null}
+      )
+    `;
+
+    const uploadUrl = await presignPut(c.env, key, mime, byteSize);
+    results.push({
+      media_id: mediaId,
+      upload_url: uploadUrl,
+      upload_headers: {
+        "Content-Type": mime,
+        "Content-Length": String(byteSize),
+      },
+      client_local_id: item.client_local_id,
+      expires_in: 900,
+    });
+  }
+
+  return c.json({ results });
+});
+
+mediaRoutes.get("/timeline", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const limit = Math.min(Number(c.req.query("limit") || 50), 100);
+  const cursor = c.req.query("cursor"); // sort_at|id
+
+  let rows;
+  if (cursor) {
+    const [sortAt, id] = cursor.split("|");
+    rows = await sql(c.env)`
+      select id, type, status, sort_at, mime_type, width, height, byte_size,
+             caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at, uploaded_at
+      from media
+      where archive_id = ${owner.archive.id}
+        and deleted_at is null
+        and status = 'ready'
+        and (sort_at, id) < (${sortAt}::timestamptz, ${id}::uuid)
+      order by sort_at desc, id desc
+      limit ${limit}
+    `;
+  } else {
+    rows = await sql(c.env)`
+      select id, type, status, sort_at, mime_type, width, height, byte_size,
+             caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at, uploaded_at
+      from media
+      where archive_id = ${owner.archive.id}
+        and deleted_at is null
+        and status = 'ready'
+      order by sort_at desc, id desc
+      limit ${limit}
+    `;
+  }
+
+  const items = await Promise.all(
+    rows.map(async (row) => {
+      const key = (row.r2_thumb_key || row.r2_preview_key || row.r2_original_key) as string;
+      const thumbUrl = await presignGet(c.env, key, 3600);
+      return {
+        id: row.id,
+        type: row.type,
+        sort_at: row.sort_at,
+        taken_at: row.taken_at,
+        width: row.width,
+        height: row.height,
+        caption: row.caption,
+        mime_type: row.mime_type,
+        thumb_url: thumbUrl,
+        preview_url: thumbUrl,
+      };
+    }),
+  );
+
+  const last = rows[rows.length - 1];
+  const nextCursor =
+    rows.length === limit && last
+      ? `${new Date(last.sort_at as string).toISOString()}|${last.id}`
+      : null;
+
+  return c.json({ items, next_cursor: nextCursor });
+});
+
+mediaRoutes.post("/:id/complete", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const id = c.req.param("id");
+  const rows = await sql(c.env)`
+    select id, r2_original_key, byte_size, status
+    from media
+    where id = ${id}
+      and archive_id = ${owner.archive.id}
+      and deleted_at is null
+    limit 1
+  `;
+  if (!rows.length) return c.json({ error: "not found" }, 404);
+
+  const media = rows[0] as {
+    id: string;
+    r2_original_key: string;
+    byte_size: number | null;
+    status: string;
+  };
+
+  try {
+    const head = await headObject(c.env, media.r2_original_key);
+    if (
+      media.byte_size &&
+      head.ContentLength &&
+      head.ContentLength !== Number(media.byte_size)
+    ) {
+      await sql(c.env)`
+        update media set status = 'failed', updated_at = now() where id = ${id}
+      `;
+      return c.json({ error: "size mismatch" }, 400);
+    }
+  } catch {
+    return c.json({ error: "object not found in R2" }, 400);
+  }
+
+  // Phase 1: mark ready immediately; derivative worker comes later.
+  await sql(c.env)`
+    update media
+    set status = 'ready',
+        r2_preview_key = r2_original_key,
+        r2_thumb_key = r2_original_key,
+        updated_at = now()
+    where id = ${id}
+  `;
+
+  return c.json({ media_id: id, status: "ready" });
+});
+
+mediaRoutes.patch("/:id", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+  const body = await c.req.json<{
+    caption?: string | null;
+    alt_text?: string | null;
+    taken_at?: string | null;
+  }>();
+
+  const existing = await sql(c.env)`
+    select id from media
+    where id = ${id} and archive_id = ${owner.archive.id} and deleted_at is null
+    limit 1
+  `;
+  if (!existing.length) return c.json({ error: "not found" }, 404);
+
+  let takenAtIso: string | null | undefined = undefined;
+  let sortAtIso: string | undefined;
+  if (body.taken_at !== undefined) {
+    if (body.taken_at === null) {
+      takenAtIso = null;
+    } else {
+      const d = new Date(body.taken_at);
+      if (Number.isNaN(d.getTime())) return c.json({ error: "invalid taken_at" }, 400);
+      takenAtIso = d.toISOString();
+      sortAtIso = takenAtIso;
+    }
+  }
+
+  if (body.caption !== undefined) {
+    await sql(c.env)`update media set caption = ${body.caption}, updated_at = now() where id = ${id}`;
+  }
+  if (body.alt_text !== undefined) {
+    await sql(c.env)`update media set alt_text = ${body.alt_text}, updated_at = now() where id = ${id}`;
+  }
+  if (takenAtIso !== undefined) {
+    await sql(c.env)`
+      update media set
+        taken_at = ${takenAtIso},
+        sort_at = coalesce(${sortAtIso ?? null}, sort_at),
+        taken_at_source = 'client',
+        updated_at = now()
+      where id = ${id}
+    `;
+  }
+
+  return c.json({ ok: true });
+});
+
+mediaRoutes.delete("/:id", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+
+  const result = await sql(c.env)`
+    update media
+    set deleted_at = now(), status = 'deleted', updated_at = now()
+    where id = ${id}
+      and archive_id = ${owner.archive.id}
+      and deleted_at is null
+    returning id
+  `;
+
+  if (!result.length) return c.json({ error: "not found" }, 404);
+  return c.json({ ok: true });
+});

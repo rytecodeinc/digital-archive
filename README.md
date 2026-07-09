@@ -1,21 +1,40 @@
 # Digital Archive
 
-Personal travel memory archive — a private chronological photo library with curated public trip pages.
+Personal travel memory archive — private chronological photo library with curated public trip pages (later).
 
-## Architecture
+## Phase 1 (implemented)
 
-See **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** for the complete system design.
+- Email/password owner login (`rinarasia@icloud.com`)
+- Direct photo upload from phone/computer → Cloudflare R2 bucket `digital-archive-media`
+- Private timeline (newest first)
+- Soft-delete
 
-### Locked product decisions
+## Docs
 
-- **Client:** responsive **web app first**; optional Swift companion later (same API)
-- **Upload:** phone or computer via the web app → Cloudflare R2
-- **R2:** one bucket named **`digital-archive-media`** (photos + future videos together)
-- **Auth (v1):** email login (no Google OAuth yet); owner `rinarasia@icloud.com`
-- **Hosting:** Cloudflare Pages + Workers + R2 (not GitHub Pages alone)
-- **v1:** photos only (JPEG/HEIC), private timeline like Google Photos
-- **Public URLs (later):** `/{year}/{location}` e.g. `/2026/malaysia`
+- [Architecture](./docs/ARCHITECTURE.md)
+- [Setup](./docs/SETUP.md) — **read this before running** (needs Supabase Postgres URI)
 
-Owner setup checklist (Cloudflare R2, Postgres, secrets) is in the architecture doc §16.
+## Quick start
 
-Implementation has not started; this repository currently holds the architecture only.
+```bash
+cp .env.example .env
+cp apps/api/.dev.vars.example apps/api/.dev.vars
+# fill DATABASE_URL (Postgres URI), R2 keys, SESSION_SECRET, OWNER_PASSWORD
+
+npm install
+npm run db:migrate
+npm run db:seed
+npm run dev:api
+npm run dev:web
+```
+
+Open `http://127.0.0.1:5173`, sign in, upload photos.
+
+## Monorepo
+
+```
+apps/api     Cloudflare Worker (Hono)
+apps/web     Vite + React owner UI
+packages/db  SQL migrations
+scripts/     migrate + seed
+```

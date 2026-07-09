@@ -1,0 +1,40 @@
+export type Env = {
+  DATABASE_URL: string;
+  R2_BUCKET: string;
+  CF_ACCOUNT_ID: string;
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
+  SESSION_SECRET: string;
+  OWNER_EMAIL: string;
+};
+
+export type UserRow = {
+  id: string;
+  email: string;
+  display_name: string;
+  password_hash: string | null;
+};
+
+export type ArchiveRow = {
+  id: string;
+  owner_user_id: string;
+  title: string;
+};
+
+export type MediaRow = {
+  id: string;
+  archive_id: string;
+  type: "photo" | "video";
+  status: string;
+  sort_at: string;
+  mime_type: string;
+  width: number | null;
+  height: number | null;
+  byte_size: number | null;
+  caption: string | null;
+  r2_original_key: string;
+  r2_thumb_key: string | null;
+  r2_preview_key: string | null;
+  taken_at: string | null;
+  uploaded_at: string;
+};
