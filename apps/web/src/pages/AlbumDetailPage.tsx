@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   api,
@@ -6,9 +6,8 @@ import {
   type TimelineItem,
   type User,
 } from "../lib/api";
-import { groupTimelineByDay } from "../lib/timelineGroups";
-import { JustifiedDayGrid } from "../components/JustifiedDayGrid";
 import { LibraryShell } from "../components/LibraryShell";
+import { PhotoSections } from "../components/PhotoSections";
 
 function PlusIcon() {
   return (
@@ -27,17 +26,6 @@ function CloseIcon() {
       <path
         fill="currentColor"
         d="M18.3 5.71 12 12.01 5.7 5.7 4.29 7.11 10.59 13.4 4.29 19.7 5.7 21.11 12 14.82 18.29 21.11 19.7 19.7 13.41 13.4 19.71 7.11z"
-      />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"
       />
     </svg>
   );
@@ -62,17 +50,8 @@ export function AlbumDetailPage({
   const [libraryCursor, setLibraryCursor] = useState<string | null>(null);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [hoveredSectionKey, setHoveredSectionKey] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const dayGroups = useMemo(
-    () => groupTimelineByDay(libraryItems),
-    [libraryItems],
-  );
-  const albumDayGroups = useMemo(
-    () => groupTimelineByDay(albumItems),
-    [albumItems],
-  );
   const selectedCount = selectedIds.size;
   const selectionActive = selectedCount > 0;
   const inAlbumSelection = !picking && selectionActive;
@@ -101,7 +80,6 @@ export function AlbumDetailPage({
     setAlbumItems([]);
     setPicking(false);
     setSelectedIds(new Set());
-    setHoveredSectionKey(null);
 
     loadAlbum(albumId)
       .catch((err) => {
@@ -136,7 +114,6 @@ export function AlbumDetailPage({
     if (!album) return;
     setPicking(true);
     setSelectedIds(new Set());
-    setHoveredSectionKey(null);
     setStatus(null);
     setError(null);
     setLibraryItems([]);
@@ -158,7 +135,6 @@ export function AlbumDetailPage({
     if (adding) return;
     setPicking(false);
     setSelectedIds(new Set());
-    setHoveredSectionKey(null);
     setLibraryItems([]);
     setLibraryCursor(null);
     setStatus(null);
@@ -166,88 +142,6 @@ export function AlbumDetailPage({
 
   function clearSelection() {
     setSelectedIds(new Set());
-    setHoveredSectionKey(null);
-  }
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleSection(ids: string[]) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      const allSelected = ids.every((id) => next.has(id));
-      if (allSelected) {
-        for (const id of ids) next.delete(id);
-      } else {
-        for (const id of ids) next.add(id);
-      }
-      return next;
-    });
-  }
-
-  function renderDaySections(
-    groups: ReturnType<typeof groupTimelineByDay>,
-    options: { forceSelectionMode?: boolean } = {},
-  ) {
-    const forceSelectionMode = options.forceSelectionMode ?? false;
-    return groups.map((group) => {
-      const groupIds = group.items.map((item) => item.id);
-      const selectedInGroup = groupIds.filter((id) => selectedIds.has(id)).length;
-      const allSelected =
-        groupIds.length > 0 && selectedInGroup === groupIds.length;
-      const someSelected = selectedInGroup > 0 && !allSelected;
-      const showSectionCheck =
-        hoveredSectionKey === group.key || selectedInGroup > 0;
-
-      return (
-        <section
-          className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
-          key={group.key}
-          onMouseEnter={() => setHoveredSectionKey(group.key)}
-          onMouseLeave={() =>
-            setHoveredSectionKey((current) =>
-              current === group.key ? null : current,
-            )
-          }
-        >
-          <div className="day-header-row">
-            <button
-              className={`section-check${allSelected ? " is-checked" : ""}${
-                someSelected ? " is-partial" : ""
-              }${showSectionCheck ? " is-visible" : ""}`}
-              type="button"
-              aria-label={
-                allSelected
-                  ? `Deselect all photos from ${group.label}`
-                  : `Select all photos from ${group.label}`
-              }
-              aria-pressed={allSelected}
-              onClick={() => toggleSection(groupIds)}
-            >
-              <CheckIcon />
-            </button>
-            <h2 className="day-header">{group.label}</h2>
-          </div>
-          <JustifiedDayGrid
-            items={group.items}
-            selectedIds={selectedIds}
-            selectionActive={forceSelectionMode || selectionActive}
-            onToggleSelect={toggleSelect}
-            onOpen={(item) => {
-              if (forceSelectionMode || selectionActive) {
-                toggleSelect(item.id);
-              }
-            }}
-          />
-        </section>
-      );
-    });
   }
 
   async function confirmAdd() {
@@ -369,9 +263,13 @@ export function AlbumDetailPage({
           </div>
         ) : (
           <>
-            <div className="timeline-days">
-              {renderDaySections(dayGroups, { forceSelectionMode: true })}
-            </div>
+            <PhotoSections
+              items={libraryItems}
+              selectedIds={selectedIds}
+              onSelectedIdsChange={setSelectedIds}
+              forceSelectionMode
+              lightboxEnabled={false}
+            />
             {libraryCursor ? (
               <div className="load-more">
                 <button
@@ -410,7 +308,11 @@ export function AlbumDetailPage({
           </button>
         </div>
       ) : (
-        <div className="timeline-days">{renderDaySections(albumDayGroups)}</div>
+        <PhotoSections
+          items={albumItems}
+          selectedIds={selectedIds}
+          onSelectedIdsChange={setSelectedIds}
+        />
       )}
     </LibraryShell>
   );

@@ -6,23 +6,10 @@ import {
   type TimelineItem,
   type User,
 } from "../lib/api";
-import { groupTimelineByDay } from "../lib/timelineGroups";
-import { JustifiedDayGrid } from "../components/JustifiedDayGrid";
 import { LibraryShell } from "../components/LibraryShell";
-import { Lightbox } from "../components/Lightbox";
+import { PhotoSections } from "../components/PhotoSections";
 
 export type LibraryView = "photos" | "trash";
-
-function CheckIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"
-      />
-    </svg>
-  );
-}
 
 function UploadIcon() {
   return (
@@ -73,19 +60,15 @@ export function TimelinePage({
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [hoveredSectionKey, setHoveredSectionKey] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const dayGroups = useMemo(
-    () =>
-      groupTimelineByDay(items, new Date(), (item) =>
-        isTrash
-          ? item.deleted_at || item.taken_at || item.sort_at
-          : item.taken_at || item.sort_at,
-      ),
-    [items, isTrash],
+  const getDate = useMemo(
+    () => (item: TimelineItem) =>
+      isTrash
+        ? item.deleted_at || item.taken_at || item.sort_at
+        : item.taken_at || item.sort_at,
+    [isTrash],
   );
   const selectedCount = selectedIds.size;
   const selectionActive = selectedCount > 0;
@@ -116,37 +99,13 @@ export function TimelinePage({
     setLoading(true);
     setStatus(null);
     setError(null);
-    setLightboxIndex(null);
     setSelectedIds(new Set());
-    setHoveredSectionKey(null);
     void load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
   function clearSelection() {
     setSelectedIds(new Set());
-  }
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleSection(ids: string[]) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      const allSelected = ids.every((id) => next.has(id));
-      if (allSelected) {
-        for (const id of ids) next.delete(id);
-      } else {
-        for (const id of ids) next.add(id);
-      }
-      return next;
-    });
   }
 
   async function onFilesSelected(fileList: FileList | null) {
@@ -238,15 +197,7 @@ export function TimelinePage({
       next.delete(id);
       return next;
     });
-    setItems((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      setLightboxIndex((current) => {
-        if (current === null) return null;
-        if (!next.length) return null;
-        return Math.min(current, next.length - 1);
-      });
-      return next;
-    });
+    setItems((prev) => prev.filter((item) => item.id !== id));
   }
 
   async function onDeleteSelected() {
@@ -270,7 +221,6 @@ export function TimelinePage({
       const deleted = new Set(res.deleted_ids);
       setItems((prev) => prev.filter((item) => !deleted.has(item.id)));
       setSelectedIds(new Set());
-      setLightboxIndex(null);
       setStatus(
         res.deleted_count === 1
           ? "Moved 1 photo to Trash"
@@ -302,7 +252,6 @@ export function TimelinePage({
       const purged = new Set(res.purged_ids);
       setItems((prev) => prev.filter((item) => !purged.has(item.id)));
       setSelectedIds(new Set());
-      setLightboxIndex(null);
       setStatus(
         res.purged_count === 1
           ? "Permanently deleted 1 photo"
@@ -316,204 +265,148 @@ export function TimelinePage({
   }
 
   return (
-    <>
-      <LibraryShell
-        user={user}
-        nav={isTrash ? "trash" : "photos"}
-        contentLabel={isTrash ? "Trash" : "Photo timeline"}
-        onLogout={onLogout}
-        heading={
-          <>
-            {selectionActive ? (
-              <div className="selection-heading">
-                <button
-                  className="selection-clear"
-                  type="button"
-                  aria-label="Clear selection"
-                  title="Clear selection"
-                  onClick={clearSelection}
-                >
-                  <CloseIcon />
-                </button>
-                <h1 className="selection-count">{selectedCount} Selected</h1>
-              </div>
-            ) : (
-              <h1 className="page-heading">{isTrash ? "Trash" : "Photos"}</h1>
-            )}
-            {error ? (
-              <p className="topbar-message is-error" role="alert">
-                {error}
-              </p>
-            ) : status ? (
-              <p className="topbar-message" role="status">
-                {status}
-              </p>
-            ) : null}
-          </>
-        }
-        actions={
-          <>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,.heic,.heif"
-              multiple
-              hidden
-              onChange={(e) => void onFilesSelected(e.target.files)}
-            />
-            {!isTrash ? (
+    <LibraryShell
+      user={user}
+      nav={isTrash ? "trash" : "photos"}
+      contentLabel={isTrash ? "Trash" : "Photo timeline"}
+      onLogout={onLogout}
+      heading={
+        <>
+          {selectionActive ? (
+            <div className="selection-heading">
               <button
-                className="icon-btn"
+                className="selection-clear"
                 type="button"
-                aria-label={uploading ? "Uploading" : "Upload photos"}
-                title={uploading ? "Uploading…" : "Upload photos"}
+                aria-label="Clear selection"
+                title="Clear selection"
+                onClick={clearSelection}
+              >
+                <CloseIcon />
+              </button>
+              <h1 className="selection-count">{selectedCount} Selected</h1>
+            </div>
+          ) : (
+            <h1 className="page-heading">{isTrash ? "Trash" : "Photos"}</h1>
+          )}
+          {error ? (
+            <p className="topbar-message is-error" role="alert">
+              {error}
+            </p>
+          ) : status ? (
+            <p className="topbar-message" role="status">
+              {status}
+            </p>
+          ) : null}
+        </>
+      }
+      actions={
+        <>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,.heic,.heif"
+            multiple
+            hidden
+            onChange={(e) => void onFilesSelected(e.target.files)}
+          />
+          {!isTrash ? (
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label={uploading ? "Uploading" : "Upload photos"}
+              title={uploading ? "Uploading…" : "Upload photos"}
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+            >
+              <UploadIcon />
+            </button>
+          ) : null}
+          {selectionActive && !isTrash ? (
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="Move selected to Trash"
+              title="Move to Trash"
+              onClick={() => void onDeleteSelected()}
+            >
+              <TrashIcon />
+            </button>
+          ) : null}
+          {selectionActive && isTrash ? (
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="Permanently delete selected"
+              title="Delete forever"
+              onClick={() => void onPurgeSelected()}
+            >
+              <TrashIcon />
+            </button>
+          ) : null}
+        </>
+      }
+    >
+      {loading ? (
+        <p className="muted content-status">
+          {isTrash ? "Loading trash…" : "Loading timeline…"}
+        </p>
+      ) : items.length === 0 ? (
+        <div className="empty">
+          {isTrash ? (
+            <>
+              <h2>Trash is empty</h2>
+              <p className="muted">
+                Photos you move to Trash will show up here. You can restore them
+                later.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2>No photos yet</h2>
+              <p className="muted">
+                Upload from your phone or computer. Files go straight to
+                Cloudflare R2 and appear here in chronological order.
+              </p>
+              <button
+                className="btn"
+                type="button"
                 disabled={uploading}
                 onClick={() => fileRef.current?.click()}
               >
-                <UploadIcon />
+                {uploading ? "Uploading…" : "Upload photos"}
               </button>
-            ) : null}
-            {selectionActive && !isTrash ? (
+            </>
+          )}
+        </div>
+      ) : (
+        <>
+          <PhotoSections
+            items={items}
+            getDate={getDate}
+            selectedIds={selectedIds}
+            onSelectedIdsChange={setSelectedIds}
+            canDelete={!isTrash}
+            onDelete={
+              isTrash
+                ? undefined
+                : async (id) => {
+                    await onDelete(id, { skipConfirm: true });
+                  }
+            }
+          />
+          {nextCursor ? (
+            <div className="load-more">
               <button
-                className="icon-btn"
+                className="btn secondary"
                 type="button"
-                aria-label="Move selected to Trash"
-                title="Move to Trash"
-                onClick={() => void onDeleteSelected()}
+                onClick={() => void load(false)}
               >
-                <TrashIcon />
+                Load more
               </button>
-            ) : null}
-            {selectionActive && isTrash ? (
-              <button
-                className="icon-btn"
-                type="button"
-                aria-label="Permanently delete selected"
-                title="Delete forever"
-                onClick={() => void onPurgeSelected()}
-              >
-                <TrashIcon />
-              </button>
-            ) : null}
-          </>
-        }
-      >
-        {loading ? (
-          <p className="muted content-status">
-            {isTrash ? "Loading trash…" : "Loading timeline…"}
-          </p>
-        ) : items.length === 0 ? (
-          <div className="empty">
-            {isTrash ? (
-              <>
-                <h2>Trash is empty</h2>
-                <p className="muted">
-                  Photos you move to Trash will show up here. You can restore
-                  them later.
-                </p>
-              </>
-            ) : (
-              <>
-                <h2>No photos yet</h2>
-                <p className="muted">
-                  Upload from your phone or computer. Files go straight to
-                  Cloudflare R2 and appear here in chronological order.
-                </p>
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={uploading}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {uploading ? "Uploading…" : "Upload photos"}
-                </button>
-              </>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="timeline-days">
-              {dayGroups.map((group) => {
-                const groupIds = group.items.map((item) => item.id);
-                const selectedInGroup = groupIds.filter((id) =>
-                  selectedIds.has(id),
-                ).length;
-                const allSelected =
-                  groupIds.length > 0 && selectedInGroup === groupIds.length;
-                const someSelected = selectedInGroup > 0 && !allSelected;
-                const showSectionCheck =
-                  hoveredSectionKey === group.key || selectedInGroup > 0;
-
-                return (
-                  <section
-                    className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
-                    key={group.key}
-                    onMouseEnter={() => setHoveredSectionKey(group.key)}
-                    onMouseLeave={() =>
-                      setHoveredSectionKey((current) =>
-                        current === group.key ? null : current,
-                      )
-                    }
-                  >
-                    <div className="day-header-row">
-                      <button
-                        className={`section-check${allSelected ? " is-checked" : ""}${
-                          someSelected ? " is-partial" : ""
-                        }${showSectionCheck ? " is-visible" : ""}`}
-                        type="button"
-                        aria-label={
-                          allSelected
-                            ? `Deselect all photos from ${group.label}`
-                            : `Select all photos from ${group.label}`
-                        }
-                        aria-pressed={allSelected}
-                        onClick={() => toggleSection(groupIds)}
-                      >
-                        <CheckIcon />
-                      </button>
-                      <h2 className="day-header">{group.label}</h2>
-                    </div>
-                    <JustifiedDayGrid
-                      items={group.items}
-                      selectedIds={selectedIds}
-                      selectionActive={selectionActive}
-                      onToggleSelect={toggleSelect}
-                      onOpen={(item) => {
-                        const idx = items.findIndex((entry) => entry.id === item.id);
-                        if (idx >= 0) setLightboxIndex(idx);
-                      }}
-                    />
-                  </section>
-                );
-              })}
             </div>
-            {nextCursor ? (
-              <div className="load-more">
-                <button
-                  className="btn secondary"
-                  type="button"
-                  onClick={() => void load(false)}
-                >
-                  Load more
-                </button>
-              </div>
-            ) : null}
-          </>
-        )}
-      </LibraryShell>
-
-      {lightboxIndex !== null ? (
-        <Lightbox
-          items={items}
-          index={lightboxIndex}
-          canDelete={!isTrash}
-          onClose={() => setLightboxIndex(null)}
-          onNavigate={setLightboxIndex}
-          onDelete={async (id) => {
-            await onDelete(id, { skipConfirm: true });
-          }}
-        />
-      ) : null}
-    </>
+          ) : null}
+        </>
+      )}
+    </LibraryShell>
   );
 }
