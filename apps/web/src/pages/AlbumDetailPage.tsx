@@ -144,6 +144,26 @@ export function AlbumDetailPage({
     setSelectedIds(new Set());
   }
 
+  async function onDeleteFromAlbum(id: string) {
+    await api.deleteMedia(id);
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setAlbumItems((prev) => prev.filter((item) => item.id !== id));
+    setAlbum((prev) =>
+      prev
+        ? {
+            ...prev,
+            media_count: Math.max(0, prev.media_count - 1),
+            photo_count: Math.max(0, prev.photo_count - 1),
+          }
+        : prev,
+    );
+  }
+
   async function confirmAdd() {
     if (!albumId || !selectedCount) return;
     setAdding(true);
@@ -312,6 +332,8 @@ export function AlbumDetailPage({
           items={albumItems}
           selectedIds={selectedIds}
           onSelectedIdsChange={setSelectedIds}
+          canDelete
+          onDelete={onDeleteFromAlbum}
         />
       )}
     </LibraryShell>
