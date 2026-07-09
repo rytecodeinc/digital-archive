@@ -42,6 +42,24 @@ export function App() {
           user ? (
             <TimelinePage
               user={user}
+              view="photos"
+              onLogout={async () => {
+                await api.logout();
+                setUser(null);
+              }}
+            />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/trash"
+        element={
+          user ? (
+            <TimelinePage
+              user={user}
+              view="trash"
               onLogout={async () => {
                 await api.logout();
                 setUser(null);

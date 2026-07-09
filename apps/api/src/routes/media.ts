@@ -331,6 +331,96 @@ mediaRoutes.get("/timeline", async (c) => {
   return c.json({ items, next_cursor: nextCursor });
 });
 
+mediaRoutes.get("/trash", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const limit = Math.min(Number(c.req.query("limit") || 50), 100);
+  const cursor = c.req.query("cursor"); // deleted_at|id
+
+  let rows;
+  if (cursor) {
+    const [deletedAt, id] = cursor.split("|");
+    rows = await sql(c.env)`
+      select id, type, status, sort_at, mime_type, width, height, byte_size,
+             caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at,
+             uploaded_at, deleted_at
+      from media
+      where archive_id = ${owner.archive.id}
+        and deleted_at is not null
+        and (deleted_at, id) < (${deletedAt}::timestamptz, ${id}::uuid)
+      order by deleted_at desc, id desc
+      limit ${limit}
+    `;
+  } else {
+    rows = await sql(c.env)`
+      select id, type, status, sort_at, mime_type, width, height, byte_size,
+             caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at,
+             uploaded_at, deleted_at
+      from media
+      where archive_id = ${owner.archive.id}
+        and deleted_at is not null
+      order by deleted_at desc, id desc
+      limit ${limit}
+    `;
+  }
+
+  const items = await Promise.all(
+    rows.map(async (row) => {
+      const key = (row.r2_thumb_key || row.r2_preview_key || row.r2_original_key) as string;
+      const thumbUrl = await presignGet(c.env, key, 3600);
+      return {
+        id: row.id,
+        type: row.type,
+        sort_at: row.sort_at,
+        taken_at: row.taken_at,
+        deleted_at: row.deleted_at,
+        width: row.width,
+        height: row.height,
+        caption: row.caption,
+        mime_type: row.mime_type,
+        thumb_url: thumbUrl,
+        preview_url: thumbUrl,
+      };
+    }),
+  );
+
+  const last = rows[rows.length - 1];
+  const nextCursor =
+    rows.length === limit && last
+      ? `${new Date(last.deleted_at as string).toISOString()}|${last.id}`
+      : null;
+
+  return c.json({ items, next_cursor: nextCursor });
+});
+
+/** Soft-delete many items into Trash (recoverable until hard GC). */
+mediaRoutes.post("/batch-delete", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const body = await c.req.json<{ ids?: string[] }>();
+  const ids = [...new Set((body.ids || []).filter((id) => typeof id === "string" && id))];
+  if (!ids.length) return c.json({ error: "ids required" }, 400);
+  if (ids.length > 200) return c.json({ error: "too many ids (max 200)" }, 400);
+
+  const db = sql(c.env);
+  const result = await db`
+    update media
+    set deleted_at = now(), status = 'deleted', updated_at = now()
+    where archive_id = ${owner.archive.id}
+      and deleted_at is null
+      and id in ${db(ids)}
+    returning id
+  `;
+
+  return c.json({
+    ok: true,
+    deleted_count: result.length,
+    deleted_ids: result.map((row) => row.id as string),
+  });
+});
+
 mediaRoutes.put("/:id/content", async (c) => {
   const owner = await requireOwner(c);
   if (owner instanceof Response) return owner;
@@ -449,8 +539,7 @@ mediaRoutes.get("/:id/download", async (c) => {
     from media
     where id = ${id}
       and archive_id = ${owner.archive.id}
-      and deleted_at is null
-      and status = 'ready'
+      and status in ('ready', 'deleted')
     limit 1
   `;
   if (!rows.length) return c.json({ error: "not found" }, 404);
@@ -596,31 +685,4 @@ mediaRoutes.delete("/:id", async (c) => {
 
   if (!result.length) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true });
-});
-
-/** Soft-delete many items into Trash (recoverable until hard GC). */
-mediaRoutes.post("/batch-delete", async (c) => {
-  const owner = await requireOwner(c);
-  if (owner instanceof Response) return owner;
-
-  const body = await c.req.json<{ ids?: string[] }>();
-  const ids = [...new Set((body.ids || []).filter((id) => typeof id === "string" && id))];
-  if (!ids.length) return c.json({ error: "ids required" }, 400);
-  if (ids.length > 200) return c.json({ error: "too many ids (max 200)" }, 400);
-
-  const db = sql(c.env);
-  const result = await db`
-    update media
-    set deleted_at = now(), status = 'deleted', updated_at = now()
-    where archive_id = ${owner.archive.id}
-      and deleted_at is null
-      and id in ${db(ids)}
-    returning id
-  `;
-
-  return c.json({
-    ok: true,
-    deleted_count: result.length,
-    deleted_ids: result.map((row) => row.id as string),
-  });
 });

@@ -9,6 +9,7 @@ export type TimelineItem = {
   type: string;
   sort_at: string;
   taken_at: string | null;
+  deleted_at?: string | null;
   width: number | null;
   height: number | null;
   caption: string | null;
@@ -47,6 +48,13 @@ export const api = {
     if (cursor) q.set("cursor", cursor);
     return request<{ items: TimelineItem[]; next_cursor: string | null }>(
       `/api/owner/media/timeline?${q}`,
+    );
+  },
+  trash: (cursor?: string | null) => {
+    const q = new URLSearchParams({ limit: "60" });
+    if (cursor) q.set("cursor", cursor);
+    return request<{ items: TimelineItem[]; next_cursor: string | null }>(
+      `/api/owner/media/trash?${q}`,
     );
   },
   createUploadSession: (body: {

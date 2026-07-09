@@ -51,11 +51,13 @@ export function formatDayHeader(date: Date, now = new Date()) {
 export function groupTimelineByDay(
   items: TimelineItem[],
   now = new Date(),
+  getDate: (item: TimelineItem) => string = (item) =>
+    item.taken_at || item.sort_at,
 ): TimelineDayGroup[] {
   const groups = new Map<string, TimelineDayGroup>();
 
   for (const item of items) {
-    const raw = item.taken_at || item.sort_at;
+    const raw = getDate(item);
     const date = new Date(raw);
     const key = dayKey(date);
     const existing = groups.get(key);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   api,
   readImageDimensions,
@@ -9,6 +10,8 @@ import {
 import { groupTimelineByDay } from "../lib/timelineGroups";
 import { JustifiedDayGrid } from "../components/JustifiedDayGrid";
 import { Lightbox } from "../components/Lightbox";
+
+export type LibraryView = "photos" | "trash";
 
 function CheckIcon() {
   return (
@@ -67,11 +70,14 @@ function CloseIcon() {
 
 export function TimelinePage({
   user,
+  view,
   onLogout,
 }: {
   user: User;
+  view: LibraryView;
   onLogout: () => Promise<void>;
 }) {
+  const isTrash = view === "trash";
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,27 +89,50 @@ export function TimelinePage({
   const [hoveredSectionKey, setHoveredSectionKey] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const dayGroups = useMemo(() => groupTimelineByDay(items), [items]);
+  const dayGroups = useMemo(
+    () =>
+      groupTimelineByDay(items, new Date(), (item) =>
+        isTrash
+          ? item.deleted_at || item.taken_at || item.sort_at
+          : item.taken_at || item.sort_at,
+      ),
+    [items, isTrash],
+  );
   const selectedCount = selectedIds.size;
   const selectionActive = selectedCount > 0;
 
   async function load(initial = false) {
     setError(null);
     try {
-      const res = await api.timeline(initial ? null : nextCursor);
+      const fetchPage = isTrash ? api.trash : api.timeline;
+      const res = await fetchPage(initial ? null : nextCursor);
       setItems((prev) => (initial ? res.items : [...prev, ...res.items]));
       setNextCursor(res.next_cursor);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load timeline");
+      setError(
+        err instanceof Error
+          ? err.message
+          : isTrash
+            ? "Failed to load trash"
+            : "Failed to load timeline",
+      );
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
+    setItems([]);
+    setNextCursor(null);
+    setLoading(true);
+    setStatus(null);
+    setError(null);
+    setLightboxIndex(null);
+    setSelectedIds(new Set());
+    setHoveredSectionKey(null);
     void load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [view]);
 
   function clearSelection() {
     setSelectedIds(new Set());
@@ -132,7 +161,7 @@ export function TimelinePage({
   }
 
   async function onFilesSelected(fileList: FileList | null) {
-    if (!fileList?.length) return;
+    if (!fileList?.length || isTrash) return;
     const files = [...fileList];
     setUploading(true);
     setError(null);
@@ -210,6 +239,7 @@ export function TimelinePage({
   }
 
   async function onDelete(id: string, options?: { skipConfirm?: boolean }) {
+    if (isTrash) return;
     if (!options?.skipConfirm && !confirm("Move this photo to Trash?")) {
       return;
     }
@@ -232,6 +262,7 @@ export function TimelinePage({
   }
 
   async function onDeleteSelected() {
+    if (isTrash) return;
     const ids = [...selectedIds];
     if (!ids.length) return;
     const label =
@@ -288,7 +319,7 @@ export function TimelinePage({
               <h1 className="selection-count">{selectedCount} Selected</h1>
             </div>
           ) : (
-            <h1 className="page-heading">Photos</h1>
+            <h1 className="page-heading">{isTrash ? "Trash" : "Photos"}</h1>
           )}
         </div>
         <div className="topbar-actions">
@@ -300,17 +331,19 @@ export function TimelinePage({
             hidden
             onChange={(e) => void onFilesSelected(e.target.files)}
           />
-          <button
-            className="icon-btn"
-            type="button"
-            aria-label={uploading ? "Uploading" : "Upload photos"}
-            title={uploading ? "Uploading…" : "Upload photos"}
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-          >
-            <UploadIcon />
-          </button>
-          {selectionActive ? (
+          {!isTrash ? (
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label={uploading ? "Uploading" : "Upload photos"}
+              title={uploading ? "Uploading…" : "Upload photos"}
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+            >
+              <UploadIcon />
+            </button>
+          ) : null}
+          {selectionActive && !isTrash ? (
             <button
               className="icon-btn"
               type="button"
@@ -336,46 +369,66 @@ export function TimelinePage({
       <div className="shell-body">
         <aside className="sidebar" aria-label="Library">
           <nav className="sidebar-nav">
-            <a className="sidebar-link is-active" href="/" aria-current="page">
+            <Link
+              className={`sidebar-link${!isTrash ? " is-active" : ""}`}
+              to="/"
+              aria-current={!isTrash ? "page" : undefined}
+            >
               <PhotosIcon />
               <span>Photos</span>
-            </a>
+            </Link>
           </nav>
           <nav className="sidebar-footer" aria-label="Trash">
-            <button
-              className="sidebar-link"
-              type="button"
-              title="Trash — coming soon"
-              aria-label="Trash (coming soon)"
+            <Link
+              className={`sidebar-link${isTrash ? " is-active" : ""}`}
+              to="/trash"
+              aria-current={isTrash ? "page" : undefined}
             >
               <TrashIcon />
               <span>Trash</span>
-            </button>
+            </Link>
           </nav>
         </aside>
 
-        <section className="content-frame" aria-label="Photo timeline">
+        <section
+          className="content-frame"
+          aria-label={isTrash ? "Trash" : "Photo timeline"}
+        >
           <div className="content-scroll">
             {status ? <p className="status-line">{status}</p> : null}
             {error ? <p className="error">{error}</p> : null}
 
             {loading ? (
-              <p className="muted content-status">Loading timeline…</p>
+              <p className="muted content-status">
+                {isTrash ? "Loading trash…" : "Loading timeline…"}
+              </p>
             ) : items.length === 0 ? (
               <div className="empty">
-                <h2>No photos yet</h2>
-                <p className="muted">
-                  Upload from your phone or computer. Files go straight to Cloudflare
-                  R2 and appear here in chronological order.
-                </p>
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={uploading}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {uploading ? "Uploading…" : "Upload photos"}
-                </button>
+                {isTrash ? (
+                  <>
+                    <h2>Trash is empty</h2>
+                    <p className="muted">
+                      Photos you move to Trash will show up here. You can restore
+                      them later.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h2>No photos yet</h2>
+                    <p className="muted">
+                      Upload from your phone or computer. Files go straight to
+                      Cloudflare R2 and appear here in chronological order.
+                    </p>
+                    <button
+                      className="btn"
+                      type="button"
+                      disabled={uploading}
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      {uploading ? "Uploading…" : "Upload photos"}
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <>
@@ -455,6 +508,7 @@ export function TimelinePage({
         <Lightbox
           items={items}
           index={lightboxIndex}
+          canDelete={!isTrash}
           onClose={() => setLightboxIndex(null)}
           onNavigate={setLightboxIndex}
           onDelete={async (id) => {

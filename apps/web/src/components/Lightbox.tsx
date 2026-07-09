@@ -4,12 +4,14 @@ import { api, type TimelineItem } from "../lib/api";
 export function Lightbox({
   items,
   index,
+  canDelete = true,
   onClose,
   onNavigate,
   onDelete,
 }: {
   items: TimelineItem[];
   index: number;
+  canDelete?: boolean;
   onClose: () => void;
   onNavigate: (nextIndex: number) => void;
   onDelete: (id: string) => Promise<void> | void;
@@ -111,16 +113,18 @@ export function Lightbox({
           >
             <DownloadIcon />
           </button>
-          <button
-            className="lightbox-icon-btn lightbox-icon-danger"
-            type="button"
-            aria-label="Delete"
-            title="Delete"
-            disabled={busy !== null}
-            onClick={() => void handleDelete()}
-          >
-            <TrashIcon />
-          </button>
+          {canDelete ? (
+            <button
+              className="lightbox-icon-btn lightbox-icon-danger"
+              type="button"
+              aria-label="Move to Trash"
+              title="Move to Trash"
+              disabled={busy !== null}
+              onClick={() => void handleDelete()}
+            >
+              <TrashIcon />
+            </button>
+          ) : null}
         </div>
       </header>
 
