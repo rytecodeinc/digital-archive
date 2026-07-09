@@ -190,7 +190,7 @@ albumRoutes.get("/:id/media", async (c) => {
 
   let rows;
   if (cursor) {
-    const [position, mediaId] = cursor.split("|");
+    const [sortAt, mediaId] = cursor.split("|");
     rows = await sql(c.env)`
       select
         m.id, m.type, m.status, m.sort_at, m.mime_type, m.width, m.height,
@@ -201,8 +201,8 @@ albumRoutes.get("/:id/media", async (c) => {
       where am.album_id = ${id}
         and m.deleted_at is null
         and m.status = 'ready'
-        and (am.position, am.media_id) > (${position}::bigint, ${mediaId}::uuid)
-      order by am.position asc, am.media_id asc
+        and (m.sort_at, m.id) < (${sortAt}::timestamptz, ${mediaId}::uuid)
+      order by m.sort_at desc, m.id desc
       limit ${limit}
     `;
   } else {
@@ -216,7 +216,7 @@ albumRoutes.get("/:id/media", async (c) => {
       where am.album_id = ${id}
         and m.deleted_at is null
         and m.status = 'ready'
-      order by am.position asc, am.media_id asc
+      order by m.sort_at desc, m.id desc
       limit ${limit}
     `;
   }
@@ -246,7 +246,7 @@ albumRoutes.get("/:id/media", async (c) => {
   const last = rows[rows.length - 1];
   const nextCursor =
     rows.length === limit && last
-      ? `${last.position}|${last.id}`
+      ? `${new Date(last.sort_at as string).toISOString()}|${last.id}`
       : null;
 
   return c.json({ items, next_cursor: nextCursor });

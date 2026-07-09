@@ -69,6 +69,10 @@ export function AlbumDetailPage({
     () => groupTimelineByDay(libraryItems),
     [libraryItems],
   );
+  const albumDayGroups = useMemo(
+    () => groupTimelineByDay(albumItems),
+    [albumItems],
+  );
   const selectedCount = selectedIds.size;
 
   async function loadAlbum(id: string) {
@@ -385,20 +389,20 @@ export function AlbumDetailPage({
         </div>
       ) : (
         <div className="timeline-days">
-          <section className="day-section">
-            <div className="day-header-row">
-              <h2 className="day-header">
-                {albumItems.length} photo{albumItems.length === 1 ? "" : "s"}
-              </h2>
-            </div>
-            <JustifiedDayGrid
-              items={albumItems}
-              selectedIds={new Set()}
-              selectionActive={false}
-              onToggleSelect={() => {}}
-              onOpen={() => {}}
-            />
-          </section>
+          {albumDayGroups.map((group) => (
+            <section className="day-section" key={group.key}>
+              <div className="day-header-row">
+                <h2 className="day-header">{group.label}</h2>
+              </div>
+              <JustifiedDayGrid
+                items={group.items}
+                selectedIds={new Set()}
+                selectionActive={false}
+                onToggleSelect={() => {}}
+                onOpen={() => {}}
+              />
+            </section>
+          ))}
         </div>
       )}
     </LibraryShell>
