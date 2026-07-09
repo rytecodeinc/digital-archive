@@ -15,6 +15,9 @@ export function r2Client(env: Env) {
       accessKeyId: env.R2_ACCESS_KEY_ID,
       secretAccessKey: env.R2_SECRET_ACCESS_KEY,
     },
+    // Prevent AWS SDK v3 from injecting checksum query params that browsers omit.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
 }
 
@@ -29,16 +32,34 @@ export async function presignPut(
   env: Env,
   key: string,
   contentType: string,
-  contentLength: number,
+  _contentLength: number,
 ) {
   const client = r2Client(env);
+  // Sign only Content-Type. Browsers set Content-Length automatically; including it
+  // in SignedHeaders often causes signature mismatches from fetch().
   const command = new PutObjectCommand({
     Bucket: env.R2_BUCKET,
     Key: key,
     ContentType: contentType,
-    ContentLength: contentLength,
   });
   return getSignedUrl(client, command, { expiresIn: 15 * 60 });
+}
+
+export async function putObject(
+  env: Env,
+  key: string,
+  body: ArrayBuffer | Uint8Array,
+  contentType: string,
+) {
+  const client = r2Client(env);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: env.R2_BUCKET,
+      Key: key,
+      Body: body instanceof Uint8Array ? body : new Uint8Array(body),
+      ContentType: contentType,
+    }),
+  );
 }
 
 export async function headObject(env: Env, key: string) {

@@ -83,20 +83,27 @@ export function TimelinePage({
           continue;
         }
 
-        if (!session.upload_url || !session.media_id || !session.upload_headers) {
+        if (!session.media_id) {
           throw new Error("Upload session incomplete");
         }
 
-        const put = await fetch(session.upload_url, {
-          method: "PUT",
-          headers: session.upload_headers,
-          body: file,
-        });
-        if (!put.ok) {
-          throw new Error(`R2 upload failed for ${file.name} (${put.status})`);
+        // Prefer same-origin proxy upload so browsers aren't blocked by R2 CORS.
+        if (session.proxy_upload_url) {
+          await api.uploadContent(session.proxy_upload_url, file, mime);
+        } else if (session.upload_url && session.upload_headers) {
+          const put = await fetch(session.upload_url, {
+            method: "PUT",
+            headers: session.upload_headers,
+            body: file,
+          });
+          if (!put.ok) {
+            throw new Error(`R2 upload failed for ${file.name} (${put.status})`);
+          }
+          await api.completeUpload(session.media_id);
+        } else {
+          throw new Error("Upload session incomplete");
         }
 
-        await api.completeUpload(session.media_id);
         done += 1;
       }
 

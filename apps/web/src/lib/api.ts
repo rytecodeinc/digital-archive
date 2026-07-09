@@ -61,13 +61,30 @@ export const api = {
     request<{
       media_id?: string;
       upload_url?: string;
+      proxy_upload_url?: string;
       upload_headers?: Record<string, string>;
       deduped?: boolean;
       status?: string;
+      resumed?: boolean;
     }>("/api/owner/media/upload-sessions", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  uploadContent: async (proxyUrl: string, file: File, contentType: string) => {
+    const res = await fetch(proxyUrl, {
+      method: "PUT",
+      credentials: "include",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body: file,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Upload failed (${res.status})`);
+    }
+    return data as { media_id: string; status: string };
+  },
   completeUpload: (id: string) =>
     request<{ media_id: string; status: string }>(
       `/api/owner/media/${id}/complete`,

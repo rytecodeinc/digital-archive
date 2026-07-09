@@ -9,6 +9,7 @@ import {
   originalKey,
   presignGet,
   presignPut,
+  putObject,
 } from "../lib/r2";
 
 export const mediaRoutes = new Hono<{ Bindings: Env }>();
@@ -95,9 +96,10 @@ mediaRoutes.post("/upload-sessions", async (c) => {
         return c.json({
           media_id: row.id,
           upload_url: uploadUrl,
+          // Same-origin proxy avoids browser→R2 CORS issues until bucket CORS is configured.
+          proxy_upload_url: `/api/owner/media/${row.id}/content`,
           upload_headers: {
             "Content-Type": row.mime_type,
-            "Content-Length": String(row.byte_size),
           },
           r2_key: row.r2_original_key,
           expires_in: 900,
@@ -149,9 +151,9 @@ mediaRoutes.post("/upload-sessions", async (c) => {
   return c.json({
     media_id: mediaId,
     upload_url: uploadUrl,
+    proxy_upload_url: `/api/owner/media/${mediaId}/content`,
     upload_headers: {
       "Content-Type": mime,
-      "Content-Length": String(byteSize),
     },
     r2_key: key,
     expires_in: 900,
@@ -254,9 +256,9 @@ mediaRoutes.post("/upload-sessions/batch", async (c) => {
     results.push({
       media_id: mediaId,
       upload_url: uploadUrl,
+      proxy_upload_url: `/api/owner/media/${mediaId}/content`,
       upload_headers: {
         "Content-Type": mime,
-        "Content-Length": String(byteSize),
       },
       client_local_id: item.client_local_id,
       expires_in: 900,
@@ -326,6 +328,63 @@ mediaRoutes.get("/timeline", async (c) => {
       : null;
 
   return c.json({ items, next_cursor: nextCursor });
+});
+
+mediaRoutes.put("/:id/content", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const id = c.req.param("id");
+  const rows = await sql(c.env)`
+    select id, r2_original_key, byte_size, mime_type, status
+    from media
+    where id = ${id}
+      and archive_id = ${owner.archive.id}
+      and deleted_at is null
+    limit 1
+  `;
+  if (!rows.length) return c.json({ error: "not found" }, 404);
+
+  const media = rows[0] as {
+    id: string;
+    r2_original_key: string;
+    byte_size: number | null;
+    mime_type: string;
+    status: string;
+  };
+
+  if (media.status === "ready") {
+    return c.json({ media_id: id, status: "ready", already_ready: true });
+  }
+
+  const contentType = c.req.header("content-type") || media.mime_type;
+  const body = await c.req.arrayBuffer();
+  if (!body.byteLength) {
+    return c.json({ error: "empty body" }, 400);
+  }
+  if (media.byte_size && body.byteLength !== Number(media.byte_size)) {
+    return c.json(
+      {
+        error: "size mismatch",
+        expected: media.byte_size,
+        received: body.byteLength,
+      },
+      400,
+    );
+  }
+
+  await putObject(c.env, media.r2_original_key, body, contentType);
+
+  await sql(c.env)`
+    update media
+    set status = 'ready',
+        r2_preview_key = r2_original_key,
+        r2_thumb_key = r2_original_key,
+        updated_at = now()
+    where id = ${id}
+  `;
+
+  return c.json({ media_id: id, status: "ready" });
 });
 
 mediaRoutes.post("/:id/complete", async (c) => {

@@ -57,11 +57,22 @@ Optional: `npm run dev:worker -w @digital-archive/api` for wrangler-local Worker
 
 Open the web app, sign in as `rinarasia@icloud.com`, upload photos.
 
-## Phase 1 scope
+## R2 CORS (for direct browser uploads later)
 
-- Email/password owner login
-- Direct upload to R2 (`digital-archive-media`)
-- Private chronological timeline
-- Soft-delete
+The app currently uploads via a **same-origin API proxy** (`PUT /api/owner/media/:id/content`) so the browser does not need R2 CORS.
 
-Not in Phase 1: thumbnails worker, albums/public trip pages, video, ownership transfer.
+When you want direct-to-R2 uploads (better for large files), set bucket CORS in Cloudflare → R2 → `digital-archive-media` → Settings → CORS policy:
+
+```json
+[
+  {
+    "AllowedOrigins": ["*"],
+    "AllowedMethods": ["GET", "PUT", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Replace `*` with your real site origin once you have a stable domain. Your current Object Read & Write token cannot change CORS; use the dashboard or an Admin token.
