@@ -332,9 +332,7 @@ export function AlbumDetailPage({
               </button>
               <h1 className="selection-count">
                 {picking
-                  ? selectedCount > 0
-                    ? `${selectedCount} Selected`
-                    : "Select photos"
+                  ? `Select photos to add to ${album?.title || "album"}`
                   : `${selectedCount} Selected`}
               </h1>
             </div>
