@@ -74,6 +74,8 @@ export function AlbumDetailPage({
     [albumItems],
   );
   const selectedCount = selectedIds.size;
+  const selectionActive = selectedCount > 0;
+  const inAlbumSelection = !picking && selectionActive;
 
   async function loadAlbum(id: string) {
     const [albumRes, mediaRes] = await Promise.all([
@@ -99,6 +101,7 @@ export function AlbumDetailPage({
     setAlbumItems([]);
     setPicking(false);
     setSelectedIds(new Set());
+    setHoveredSectionKey(null);
 
     loadAlbum(albumId)
       .catch((err) => {
@@ -161,6 +164,11 @@ export function AlbumDetailPage({
     setStatus(null);
   }
 
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setHoveredSectionKey(null);
+  }
+
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -180,6 +188,65 @@ export function AlbumDetailPage({
         for (const id of ids) next.add(id);
       }
       return next;
+    });
+  }
+
+  function renderDaySections(
+    groups: ReturnType<typeof groupTimelineByDay>,
+    options: { forceSelectionMode?: boolean } = {},
+  ) {
+    const forceSelectionMode = options.forceSelectionMode ?? false;
+    return groups.map((group) => {
+      const groupIds = group.items.map((item) => item.id);
+      const selectedInGroup = groupIds.filter((id) => selectedIds.has(id)).length;
+      const allSelected =
+        groupIds.length > 0 && selectedInGroup === groupIds.length;
+      const someSelected = selectedInGroup > 0 && !allSelected;
+      const showSectionCheck =
+        hoveredSectionKey === group.key || selectedInGroup > 0;
+
+      return (
+        <section
+          className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
+          key={group.key}
+          onMouseEnter={() => setHoveredSectionKey(group.key)}
+          onMouseLeave={() =>
+            setHoveredSectionKey((current) =>
+              current === group.key ? null : current,
+            )
+          }
+        >
+          <div className="day-header-row">
+            <button
+              className={`section-check${allSelected ? " is-checked" : ""}${
+                someSelected ? " is-partial" : ""
+              }${showSectionCheck ? " is-visible" : ""}`}
+              type="button"
+              aria-label={
+                allSelected
+                  ? `Deselect all photos from ${group.label}`
+                  : `Select all photos from ${group.label}`
+              }
+              aria-pressed={allSelected}
+              onClick={() => toggleSection(groupIds)}
+            >
+              <CheckIcon />
+            </button>
+            <h2 className="day-header">{group.label}</h2>
+          </div>
+          <JustifiedDayGrid
+            items={group.items}
+            selectedIds={selectedIds}
+            selectionActive={forceSelectionMode || selectionActive}
+            onToggleSelect={toggleSelect}
+            onOpen={(item) => {
+              if (forceSelectionMode || selectionActive) {
+                toggleSelect(item.id);
+              }
+            }}
+          />
+        </section>
+      );
     });
   }
 
@@ -221,22 +288,26 @@ export function AlbumDetailPage({
       onLogout={onLogout}
       heading={
         <>
-          {picking ? (
+          {picking || inAlbumSelection ? (
             <div className="selection-heading">
               <button
                 className="selection-clear"
                 type="button"
-                aria-label="Cancel adding photos"
-                title="Cancel"
+                aria-label={
+                  picking ? "Cancel adding photos" : "Clear selection"
+                }
+                title={picking ? "Cancel" : "Clear selection"}
                 disabled={adding}
-                onClick={cancelPicking}
+                onClick={picking ? cancelPicking : clearSelection}
               >
                 <CloseIcon />
               </button>
               <h1 className="selection-count">
-                {selectedCount > 0
-                  ? `${selectedCount} Selected`
-                  : "Select photos"}
+                {picking
+                  ? selectedCount > 0
+                    ? `${selectedCount} Selected`
+                    : "Select photos"
+                  : `${selectedCount} Selected`}
               </h1>
             </div>
           ) : (
@@ -299,56 +370,7 @@ export function AlbumDetailPage({
         ) : (
           <>
             <div className="timeline-days">
-              {dayGroups.map((group) => {
-                const groupIds = group.items.map((item) => item.id);
-                const selectedInGroup = groupIds.filter((id) =>
-                  selectedIds.has(id),
-                ).length;
-                const allSelected =
-                  groupIds.length > 0 && selectedInGroup === groupIds.length;
-                const someSelected = selectedInGroup > 0 && !allSelected;
-                const showSectionCheck =
-                  hoveredSectionKey === group.key || selectedInGroup > 0;
-
-                return (
-                  <section
-                    className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
-                    key={group.key}
-                    onMouseEnter={() => setHoveredSectionKey(group.key)}
-                    onMouseLeave={() =>
-                      setHoveredSectionKey((current) =>
-                        current === group.key ? null : current,
-                      )
-                    }
-                  >
-                    <div className="day-header-row">
-                      <button
-                        className={`section-check${allSelected ? " is-checked" : ""}${
-                          someSelected ? " is-partial" : ""
-                        }${showSectionCheck ? " is-visible" : ""}`}
-                        type="button"
-                        aria-label={
-                          allSelected
-                            ? `Deselect all photos from ${group.label}`
-                            : `Select all photos from ${group.label}`
-                        }
-                        aria-pressed={allSelected}
-                        onClick={() => toggleSection(groupIds)}
-                      >
-                        <CheckIcon />
-                      </button>
-                      <h2 className="day-header">{group.label}</h2>
-                    </div>
-                    <JustifiedDayGrid
-                      items={group.items}
-                      selectedIds={selectedIds}
-                      selectionActive
-                      onToggleSelect={toggleSelect}
-                      onOpen={(item) => toggleSelect(item.id)}
-                    />
-                  </section>
-                );
-              })}
+              {renderDaySections(dayGroups, { forceSelectionMode: true })}
             </div>
             {libraryCursor ? (
               <div className="load-more">
@@ -388,22 +410,7 @@ export function AlbumDetailPage({
           </button>
         </div>
       ) : (
-        <div className="timeline-days">
-          {albumDayGroups.map((group) => (
-            <section className="day-section" key={group.key}>
-              <div className="day-header-row">
-                <h2 className="day-header">{group.label}</h2>
-              </div>
-              <JustifiedDayGrid
-                items={group.items}
-                selectedIds={new Set()}
-                selectionActive={false}
-                onToggleSelect={() => {}}
-                onOpen={() => {}}
-              />
-            </section>
-          ))}
-        </div>
+        <div className="timeline-days">{renderDaySections(albumDayGroups)}</div>
       )}
     </LibraryShell>
   );
