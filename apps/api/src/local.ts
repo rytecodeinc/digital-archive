@@ -1,16 +1,19 @@
 /**
  * Local Node server for development when `wrangler dev` cannot
  * complete TLS to Postgres (e.g. environments with TLS inspection).
+ * Also serves the built web UI so a single public tunnel URL works.
  * Production still deploys as a Cloudflare Worker via `wrangler deploy`.
  */
 import { serve } from "@hono/node-server";
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { resolve, dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import app from "./index";
 import type { Env } from "./types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, "../../..");
+const webDist = join(root, "apps/web/dist");
 
 function loadDevVars() {
   const path = resolve(__dirname, "../.dev.vars");
@@ -60,6 +63,59 @@ for (const key of [
   }
 }
 
+const mimeTypes: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+};
+
+function safeJoin(base: string, requestPath: string) {
+  const cleaned = requestPath.replace(/^\/+/, "");
+  const full = resolve(base, cleaned);
+  if (!full.startsWith(resolve(base))) return null;
+  return full;
+}
+
+if (existsSync(webDist)) {
+  app.get("*", async (c, next) => {
+    if (c.req.path.startsWith("/api")) return next();
+
+    // SPA routes (including `/`) fall through to index.html
+    if (c.req.path === "/" || !c.req.path.includes(".")) {
+      const index = join(webDist, "index.html");
+      if (!existsSync(index)) return c.text("Web UI not built", 404);
+      return c.html(readFileSync(index, "utf8"));
+    }
+
+    const assetPath = safeJoin(webDist, c.req.path);
+    if (
+      assetPath &&
+      existsSync(assetPath) &&
+      statSync(assetPath).isFile()
+    ) {
+      const body = readFileSync(assetPath);
+      const type = mimeTypes[extname(assetPath)] || "application/octet-stream";
+      return c.body(body, 200, { "Content-Type": type });
+    }
+
+    const index = join(webDist, "index.html");
+    if (!existsSync(index)) return c.text("Web UI not built", 404);
+    return c.html(readFileSync(index, "utf8"));
+  });
+  console.log(`Serving web UI from ${webDist}`);
+} else {
+  console.warn(
+    `Web UI not found at ${webDist}. Run: npm run build -w @digital-archive/web`,
+  );
+}
+
 const port = Number(process.env.PORT || 8787);
 
 serve(
@@ -68,6 +124,8 @@ serve(
     port,
   },
   (info) => {
-    console.log(`digital-archive-api (node) listening on http://127.0.0.1:${info.port}`);
+    console.log(
+      `digital-archive (api+web) listening on http://127.0.0.1:${info.port}`,
+    );
   },
 );
