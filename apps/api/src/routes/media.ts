@@ -507,6 +507,10 @@ mediaRoutes.get("/:id/content", async (c) => {
   if (!object.Body) return c.json({ error: "object missing" }, 404);
 
   const bytes = await object.Body.transformToByteArray();
+  const payload = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
   const ext = media.r2_original_key.includes(".")
     ? media.r2_original_key.slice(media.r2_original_key.lastIndexOf(".") + 1)
     : "bin";
@@ -515,7 +519,7 @@ mediaRoutes.get("/:id/content", async (c) => {
     .slice(0, 10);
   const filename = `archive-${stamp}-${media.id.slice(0, 8)}.${ext}`;
 
-  return c.body(bytes, 200, {
+  return c.body(payload, 200, {
     "Content-Type": media.mime_type || "application/octet-stream",
     ...(asDownload
       ? {
