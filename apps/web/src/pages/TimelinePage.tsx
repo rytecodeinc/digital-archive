@@ -293,6 +293,40 @@ export function TimelinePage({
     }
   }
 
+  async function onPurgeSelected() {
+    if (!isTrash) return;
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    const label =
+      ids.length === 1
+        ? "Permanently delete this photo? This cannot be undone."
+        : `Permanently delete ${ids.length} photos? This cannot be undone.`;
+    if (!confirm(label)) return;
+
+    setError(null);
+    try {
+      setStatus(
+        ids.length === 1
+          ? "Permanently deleting photo…"
+          : `Permanently deleting ${ids.length} photos…`,
+      );
+      const res = await api.batchPurgeMedia(ids);
+      const purged = new Set(res.purged_ids);
+      setItems((prev) => prev.filter((item) => !purged.has(item.id)));
+      setSelectedIds(new Set());
+      setLightboxIndex(null);
+      setStatus(
+        res.purged_count === 1
+          ? "Permanently deleted 1 photo"
+          : `Permanently deleted ${res.purged_count} photos`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to permanently delete",
+      );
+    }
+  }
+
   const initials = user.display_name?.slice(0, 1).toUpperCase() || "R";
 
   return (
@@ -359,6 +393,17 @@ export function TimelinePage({
               aria-label="Move selected to Trash"
               title="Move to Trash"
               onClick={() => void onDeleteSelected()}
+            >
+              <TrashIcon />
+            </button>
+          ) : null}
+          {selectionActive && isTrash ? (
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="Permanently delete selected"
+              title="Delete forever"
+              onClick={() => void onPurgeSelected()}
             >
               <TrashIcon />
             </button>

@@ -132,6 +132,14 @@ export const api = {
       };
     }
   },
+  batchPurgeMedia: (ids: string[]) =>
+    request<{ ok: boolean; purged_count: number; purged_ids: string[] }>(
+      "/api/owner/media/batch-purge",
+      {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      },
+    ),
 };
 
 export async function sha256Hex(file: Blob) {

@@ -4,6 +4,7 @@ import { requireOwner } from "../lib/auth";
 import { sql } from "../lib/db";
 import {
   ALLOWED_PHOTO_MIME,
+  deleteObject,
   extFromMime,
   getObject,
   headObject,
@@ -418,6 +419,63 @@ mediaRoutes.post("/batch-delete", async (c) => {
     ok: true,
     deleted_count: result.length,
     deleted_ids: result.map((row) => row.id as string),
+  });
+});
+
+/** Permanently delete soft-deleted items from Trash (DB + R2). */
+mediaRoutes.post("/batch-purge", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const body = await c.req.json<{ ids?: string[] }>();
+  const ids = [...new Set((body.ids || []).filter((id) => typeof id === "string" && id))];
+  if (!ids.length) return c.json({ error: "ids required" }, 400);
+  if (ids.length > 200) return c.json({ error: "too many ids (max 200)" }, 400);
+
+  const db = sql(c.env);
+  const rows = await db`
+    select id, r2_original_key, r2_thumb_key, r2_preview_key, r2_video_poster_key
+    from media
+    where archive_id = ${owner.archive.id}
+      and deleted_at is not null
+      and id in ${db(ids)}
+  `;
+
+  if (!rows.length) {
+    return c.json({ ok: true, purged_count: 0, purged_ids: [] as string[] });
+  }
+
+  const purgedIds: string[] = [];
+  for (const row of rows) {
+    const keys = [
+      row.r2_original_key,
+      row.r2_thumb_key,
+      row.r2_preview_key,
+      row.r2_video_poster_key,
+    ].filter((key): key is string => typeof key === "string" && key.length > 0);
+    const uniqueKeys = [...new Set(keys)];
+
+    for (const key of uniqueKeys) {
+      try {
+        await deleteObject(c.env, key);
+      } catch (err) {
+        console.error(`Failed to delete R2 key ${key}`, err);
+      }
+    }
+
+    await db`
+      delete from media
+      where id = ${row.id as string}
+        and archive_id = ${owner.archive.id}
+        and deleted_at is not null
+    `;
+    purgedIds.push(row.id as string);
+  }
+
+  return c.json({
+    ok: true,
+    purged_count: purgedIds.length,
+    purged_ids: purgedIds,
   });
 });
 
