@@ -159,6 +159,11 @@ export const api = {
       },
     ),
   albums: () => request<{ albums: AlbumSummary[] }>("/api/owner/albums"),
+  createAlbum: (title: string) =>
+    request<{ album: AlbumSummary }>("/api/owner/albums", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    }),
 };
 
 export async function sha256Hex(file: Blob) {

@@ -681,6 +681,59 @@ a {
   font-size: 0.88rem;
 }
 
+/* —— Modal —— */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(32, 33, 36, 0.45);
+  animation: fade-in 140ms ease;
+}
+
+.modal-card {
+  width: min(420px, 100%);
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: 0 16px 48px rgba(32, 33, 36, 0.28);
+  padding: 1.5rem 1.35rem 1.25rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.modal-card h2 {
+  margin: 0;
+  font-family: "Source Sans 3", system-ui, sans-serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.modal-card > .muted {
+  margin: 0;
+}
+
+.modal-form {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+}
+
+.modal-form label {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+}
+
 /* —— Lightbox —— */
 
 .lightbox {
