@@ -104,14 +104,34 @@ export const api = {
     ),
   deleteMedia: (id: string) =>
     request<{ ok: boolean }>(`/api/owner/media/${id}`, { method: "DELETE" }),
-  batchDeleteMedia: (ids: string[]) =>
-    request<{ ok: boolean; deleted_count: number; deleted_ids: string[] }>(
-      "/api/owner/media/batch-delete",
-      {
+  batchDeleteMedia: async (ids: string[]) => {
+    try {
+      return await request<{
+        ok: boolean;
+        deleted_count: number;
+        deleted_ids: string[];
+      }>("/api/owner/media/batch-delete", {
         method: "POST",
         body: JSON.stringify({ ids }),
-      },
-    ),
+      });
+    } catch (err) {
+      // Fall back to per-item soft-delete if the batch route isn't available yet.
+      const message = err instanceof Error ? err.message : "";
+      if (!/not found/i.test(message)) throw err;
+      const deleted_ids: string[] = [];
+      for (const id of ids) {
+        await request<{ ok: boolean }>(`/api/owner/media/${id}`, {
+          method: "DELETE",
+        });
+        deleted_ids.push(id);
+      }
+      return {
+        ok: true,
+        deleted_count: deleted_ids.length,
+        deleted_ids,
+      };
+    }
+  },
 };
 
 export async function sha256Hex(file: Blob) {
