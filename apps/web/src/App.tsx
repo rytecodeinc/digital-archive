@@ -30,7 +30,7 @@ export function App() {
         path="/login"
         element={
           user ? (
-            <Navigate to="/" replace />
+            <Navigate to="/photos" replace />
           ) : (
             <LoginPage onLogin={setUser} />
           )
@@ -38,6 +38,10 @@ export function App() {
       />
       <Route
         path="/"
+        element={<Navigate to={user ? "/photos" : "/login"} replace />}
+      />
+      <Route
+        path="/photos"
         element={
           user ? (
             <TimelinePage
@@ -70,7 +74,10 @@ export function App() {
           )
         }
       />
-      <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
+      <Route
+        path="*"
+        element={<Navigate to={user ? "/photos" : "/login"} replace />}
+      />
     </Routes>
   );
 }

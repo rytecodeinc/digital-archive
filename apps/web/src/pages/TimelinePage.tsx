@@ -425,7 +425,7 @@ export function TimelinePage({
           <nav className="sidebar-nav">
             <Link
               className={`sidebar-link${!isTrash ? " is-active" : ""}`}
-              to="/"
+              to="/photos"
               aria-current={!isTrash ? "page" : undefined}
             >
               <PhotosIcon />
