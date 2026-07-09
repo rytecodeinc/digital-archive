@@ -10,6 +10,17 @@ import { groupTimelineByDay } from "../lib/timelineGroups";
 import { JustifiedDayGrid } from "../components/JustifiedDayGrid";
 import { Lightbox } from "../components/Lightbox";
 
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"
+      />
+    </svg>
+  );
+}
+
 export function TimelinePage({
   user,
   onLogout,
@@ -24,9 +35,13 @@ export function TimelinePage({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [hoveredSectionKey, setHoveredSectionKey] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const dayGroups = useMemo(() => groupTimelineByDay(items), [items]);
+  const selectedCount = selectedIds.size;
+  const selectionActive = selectedCount > 0;
 
   async function load(initial = false) {
     setError(null);
@@ -45,6 +60,32 @@ export function TimelinePage({
     void load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSection(ids: string[]) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
+      if (allSelected) {
+        for (const id of ids) next.delete(id);
+      } else {
+        for (const id of ids) next.add(id);
+      }
+      return next;
+    });
+  }
 
   async function onFilesSelected(fileList: FileList | null) {
     if (!fileList?.length) return;
@@ -129,6 +170,12 @@ export function TimelinePage({
       return;
     }
     await api.deleteMedia(id);
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     setItems((prev) => {
       const next = prev.filter((item) => item.id !== id);
       setLightboxIndex((current) => {
@@ -155,10 +202,29 @@ export function TimelinePage({
       <main className="main">
         <div className="toolbar">
           <div>
-            <h1 style={{ margin: 0 }}>Timeline</h1>
-            <p className="muted" style={{ margin: "0.25rem 0 0" }}>
-              Grouped by day · newest first
-            </p>
+            {selectionActive ? (
+              <div className="selection-title">
+                <h1 style={{ margin: 0 }}>
+                  {selectedCount} Selected
+                </h1>
+                <button
+                  className="selection-clear"
+                  type="button"
+                  aria-label="Clear selection"
+                  title="Clear selection"
+                  onClick={clearSelection}
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <>
+                <h1 style={{ margin: 0 }}>Timeline</h1>
+                <p className="muted" style={{ margin: "0.25rem 0 0" }}>
+                  Grouped by day · newest first
+                </p>
+              </>
+            )}
           </div>
           <div className="topbar-actions">
             <input
@@ -196,19 +262,63 @@ export function TimelinePage({
         ) : (
           <>
             <div className="timeline-days">
-              {dayGroups.map((group) => (
-                <section className="day-section" key={group.key}>
-                  <h2 className="day-header">{group.label}</h2>
-                  <JustifiedDayGrid
-                    items={group.items}
-                    onDelete={(id) => void onDelete(id)}
-                    onOpen={(item) => {
-                      const idx = items.findIndex((entry) => entry.id === item.id);
-                      if (idx >= 0) setLightboxIndex(idx);
-                    }}
-                  />
-                </section>
-              ))}
+              {dayGroups.map((group) => {
+                const groupIds = group.items.map((item) => item.id);
+                const selectedInGroup = groupIds.filter((id) => selectedIds.has(id)).length;
+                const allSelected =
+                  groupIds.length > 0 && selectedInGroup === groupIds.length;
+                const someSelected = selectedInGroup > 0 && !allSelected;
+                const showSectionCheck =
+                  hoveredSectionKey === group.key || selectedInGroup > 0;
+
+                return (
+                  <section
+                    className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
+                    key={group.key}
+                    onMouseEnter={() => setHoveredSectionKey(group.key)}
+                    onMouseLeave={() =>
+                      setHoveredSectionKey((current) =>
+                        current === group.key ? null : current,
+                      )
+                    }
+                  >
+                    <div className="day-header-row">
+                      <button
+                        className={`section-check${allSelected ? " is-checked" : ""}${
+                          someSelected ? " is-partial" : ""
+                        }${showSectionCheck ? " is-visible" : ""}`}
+                        type="button"
+                        aria-label={
+                          allSelected
+                            ? `Deselect all photos from ${group.label}`
+                            : `Select all photos from ${group.label}`
+                        }
+                        aria-pressed={allSelected}
+                        onClick={() => toggleSection(groupIds)}
+                      >
+                        <CheckIcon />
+                      </button>
+                      <h2 className="day-header">{group.label}</h2>
+                    </div>
+                    <JustifiedDayGrid
+                      items={group.items}
+                      selectedIds={selectedIds}
+                      selectionActive={selectionActive}
+                      onToggleSelect={toggleSelect}
+                      onSectionHoverChange={(hovered) => {
+                        setHoveredSectionKey((current) => {
+                          if (hovered) return group.key;
+                          return current === group.key ? null : current;
+                        });
+                      }}
+                      onOpen={(item) => {
+                        const idx = items.findIndex((entry) => entry.id === item.id);
+                        if (idx >= 0) setLightboxIndex(idx);
+                      }}
+                    />
+                  </section>
+                );
+              })}
             </div>
             {nextCursor ? (
               <div style={{ marginTop: "1.25rem", textAlign: "center" }}>

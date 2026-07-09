@@ -230,6 +230,13 @@ a {
   gap: 0.75rem;
 }
 
+.day-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 1.75rem;
+}
+
 .day-header {
   margin: 0;
   font-family: "Source Sans 3", sans-serif;
@@ -237,6 +244,98 @@ a {
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
+}
+
+.selection-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.selection-clear {
+  appearance: none;
+  border: 0;
+  background: rgba(243, 239, 230, 0.12);
+  color: var(--ink);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.selection-clear:hover {
+  background: rgba(243, 239, 230, 0.2);
+}
+
+.section-check,
+.select-check {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: transparent;
+  background: rgba(243, 239, 230, 0.55);
+  box-shadow: inset 0 0 0 1.5px rgba(26, 36, 32, 0.35);
+  transition:
+    opacity 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.section-check {
+  opacity: 0;
+  pointer-events: none;
+  flex: 0 0 auto;
+  color: transparent;
+}
+
+.section-check.is-visible,
+.day-section.is-hovering .section-check,
+.section-check.is-checked,
+.section-check.is-partial {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.section-check.is-checked,
+.select-check.is-checked {
+  background: #1f1f1f;
+  color: #fff;
+  box-shadow: none;
+}
+
+.section-check.is-partial:not(.is-checked) {
+  background: rgba(31, 31, 31, 0.72);
+  color: #fff;
+  box-shadow: none;
+}
+
+.select-check {
+  position: absolute;
+  top: 0.45rem;
+  left: 0.45rem;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tile:hover .select-check,
+.tile:focus-within .select-check,
+.tile.is-selected .select-check,
+.tile.selection-mode .select-check {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .timeline-grid {
@@ -310,18 +409,13 @@ a {
   transform: scale(1.04);
 }
 
-.tile .delete {
-  position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
-  opacity: 0;
-  transition: opacity 160ms ease;
-  z-index: 1;
+.tile.is-selected {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 75%, white);
 }
 
-.tile:hover .delete,
-.tile:focus-within .delete {
-  opacity: 1;
+.tile.is-selected img {
+  transform: scale(0.94);
+  border-radius: 0.3rem;
 }
 
 .lightbox {
@@ -497,8 +591,14 @@ a {
     border-radius: 0.3rem;
   }
 
-  .tile .delete {
+  .select-check {
     opacity: 1;
+    pointer-events: auto;
+  }
+
+  .section-check {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .lightbox-nav {

@@ -2,14 +2,31 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineItem } from "../lib/api";
 import { buildJustifiedRows } from "../lib/justifiedLayout";
 
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"
+      />
+    </svg>
+  );
+}
+
 export function JustifiedDayGrid({
   items,
-  onDelete,
+  selectedIds,
+  selectionActive,
   onOpen,
+  onToggleSelect,
+  onSectionHoverChange,
 }: {
   items: TimelineItem[];
-  onDelete: (id: string) => void;
+  selectedIds: Set<string>;
+  selectionActive: boolean;
   onOpen: (item: TimelineItem) => void;
+  onToggleSelect: (id: string) => void;
+  onSectionHoverChange?: (hovered: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -38,7 +55,12 @@ export function JustifiedDayGrid({
   );
 
   return (
-    <div className="justified-grid" ref={containerRef}>
+    <div
+      className="justified-grid"
+      ref={containerRef}
+      onMouseEnter={() => onSectionHoverChange?.(true)}
+      onMouseLeave={() => onSectionHoverChange?.(false)}
+    >
       {width === 0
         ? null
         : rows.map((row, rowIndex) => (
@@ -47,37 +69,59 @@ export function JustifiedDayGrid({
               key={`row-${rowIndex}-${row.tiles[0]?.item.id ?? rowIndex}`}
               style={{ height: `${row.height}px` }}
             >
-              {row.tiles.map((tile, index) => (
-                <div
-                  className="tile"
-                  key={tile.item.id}
-                  style={{
-                    width: `${tile.width}px`,
-                    height: `${tile.height}px`,
-                    animationDelay: `${Math.min(index, 12) * 30}ms`,
-                  }}
-                >
-                  <button
-                    className="tile-open"
-                    type="button"
-                    onClick={() => onOpen(tile.item)}
-                    aria-label={tile.item.caption || "Open photo"}
+              {row.tiles.map((tile, index) => {
+                const selected = selectedIds.has(tile.item.id);
+                return (
+                  <div
+                    className={`tile${selected ? " is-selected" : ""}${
+                      selectionActive ? " selection-mode" : ""
+                    }`}
+                    key={tile.item.id}
+                    style={{
+                      width: `${tile.width}px`,
+                      height: `${tile.height}px`,
+                      animationDelay: `${Math.min(index, 12) * 30}ms`,
+                    }}
                   >
-                    <img
-                      src={tile.item.thumb_url}
-                      alt={tile.item.caption || "Archive photo"}
-                      loading="lazy"
-                    />
-                  </button>
-                  <button
-                    className="btn danger delete"
-                    type="button"
-                    onClick={() => onDelete(tile.item.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
+                    <button
+                      className="tile-open"
+                      type="button"
+                      onClick={() => {
+                        if (selectionActive) {
+                          onToggleSelect(tile.item.id);
+                          return;
+                        }
+                        onOpen(tile.item);
+                      }}
+                      aria-label={
+                        selectionActive
+                          ? selected
+                            ? "Deselect photo"
+                            : "Select photo"
+                          : tile.item.caption || "Open photo"
+                      }
+                    >
+                      <img
+                        src={tile.item.thumb_url}
+                        alt={tile.item.caption || "Archive photo"}
+                        loading="lazy"
+                      />
+                    </button>
+                    <button
+                      className={`select-check${selected ? " is-checked" : ""}`}
+                      type="button"
+                      aria-label={selected ? "Deselect photo" : "Select photo"}
+                      aria-pressed={selected}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleSelect(tile.item.id);
+                      }}
+                    >
+                      <CheckIcon />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ))}
     </div>
