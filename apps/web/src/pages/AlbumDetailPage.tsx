@@ -75,10 +75,14 @@ export function AlbumDetailPage({
   const [adding, setAdding] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [choosingAlbum, setChoosingAlbum] = useState(false);
+  const [albumChoices, setAlbumChoices] = useState<AlbumSummary[]>([]);
+  const [albumsLoading, setAlbumsLoading] = useState(false);
+  const [addingToAlbumId, setAddingToAlbumId] = useState<string | null>(null);
 
   const selectedCount = selectedIds.size;
   const selectionActive = selectedCount > 0;
-  const inAlbumSelection = !picking && selectionActive;
+  const inAlbumSelection = !picking && !choosingAlbum && selectionActive;
 
   async function loadAlbum(id: string) {
     const [albumRes, mediaRes] = await Promise.all([
@@ -103,8 +107,11 @@ export function AlbumDetailPage({
     setAlbum(null);
     setAlbumItems([]);
     setPicking(false);
+    setChoosingAlbum(false);
+    setAlbumChoices([]);
     setSelectedIds(new Set());
     setRemoveOpen(false);
+    setAddingToAlbumId(null);
 
     loadAlbum(albumId)
       .catch((err) => {
@@ -165,9 +172,64 @@ export function AlbumDetailPage({
     setStatus(null);
   }
 
+  async function startChoosingAlbum() {
+    if (!selectedCount) return;
+    setChoosingAlbum(true);
+    setRemoveOpen(false);
+    setError(null);
+    setStatus(null);
+    setAlbumsLoading(true);
+    try {
+      const res = await api.albums();
+      setAlbumChoices(res.albums.filter((entry) => entry.id !== albumId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load albums");
+      setChoosingAlbum(false);
+    } finally {
+      setAlbumsLoading(false);
+    }
+  }
+
+  function cancelChoosingAlbum() {
+    if (addingToAlbumId) return;
+    setChoosingAlbum(false);
+    setAlbumChoices([]);
+    setStatus(null);
+  }
+
   function clearSelection() {
     setSelectedIds(new Set());
     setRemoveOpen(false);
+    setChoosingAlbum(false);
+    setAlbumChoices([]);
+  }
+
+  async function addSelectedToAlbum(target: AlbumSummary) {
+    if (!selectedCount || addingToAlbumId) return;
+    setAddingToAlbumId(target.id);
+    setError(null);
+    try {
+      setStatus(
+        selectedCount === 1
+          ? `Adding 1 photo to “${target.title}”…`
+          : `Adding ${selectedCount} photos to “${target.title}”…`,
+      );
+      const res = await api.addAlbumMedia(target.id, [...selectedIds]);
+      setChoosingAlbum(false);
+      setAlbumChoices([]);
+      setSelectedIds(new Set());
+      setStatus(
+        res.added_count === 0
+          ? `Selected photos were already in “${target.title}”`
+          : res.added_count === 1
+            ? `Added 1 photo to “${target.title}”`
+            : `Added ${res.added_count} photos to “${target.title}”`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add photos");
+    } finally {
+      setAddingToAlbumId(null);
+    }
   }
 
   useEffect(() => {
@@ -316,24 +378,40 @@ export function AlbumDetailPage({
       onLogout={onLogout}
       heading={
         <>
-          {picking || inAlbumSelection ? (
+          {picking || inAlbumSelection || choosingAlbum ? (
             <div className="selection-heading">
               <button
                 className="selection-clear"
                 type="button"
                 aria-label={
-                  picking ? "Cancel adding photos" : "Clear selection"
+                  picking
+                    ? "Cancel adding photos"
+                    : choosingAlbum
+                      ? "Cancel choosing album"
+                      : "Clear selection"
                 }
-                title={picking ? "Cancel" : "Clear selection"}
-                disabled={adding}
-                onClick={picking ? cancelPicking : clearSelection}
+                title={
+                  picking || choosingAlbum ? "Cancel" : "Clear selection"
+                }
+                disabled={adding || !!addingToAlbumId}
+                onClick={
+                  picking
+                    ? cancelPicking
+                    : choosingAlbum
+                      ? cancelChoosingAlbum
+                      : clearSelection
+                }
               >
                 <CloseIcon />
               </button>
               <h1 className="selection-count">
-                {picking && selectedCount === 0
-                  ? `Select photos to add to ${album?.title || "album"}`
-                  : `${selectedCount} Selected`}
+                {choosingAlbum
+                  ? selectedCount === 1
+                    ? "Add 1 photo to…"
+                    : `Add ${selectedCount} photos to…`
+                  : picking && selectedCount === 0
+                    ? `Select photos to add to ${album?.title || "album"}`
+                    : `${selectedCount} Selected`}
               </h1>
             </div>
           ) : (
@@ -366,15 +444,26 @@ export function AlbumDetailPage({
                 ? `Add${selectedCount > 0 ? ` (${selectedCount})` : ""}`
                 : "Add"}
           </button>
-        ) : (
+        ) : choosingAlbum ? null : (
           <>
             <button
               className="icon-btn"
               type="button"
-              aria-label="Add photos to album"
-              title="Add photos"
+              aria-label={
+                inAlbumSelection
+                  ? "Add selected photos to another album"
+                  : "Add photos to album"
+              }
+              title={
+                inAlbumSelection
+                  ? "Add to another album"
+                  : "Add photos"
+              }
               disabled={!album || loading}
-              onClick={() => void startPicking()}
+              onClick={() => {
+                if (inAlbumSelection) void startChoosingAlbum();
+                else void startPicking();
+              }}
             >
               <PlusIcon />
             </button>
@@ -439,6 +528,49 @@ export function AlbumDetailPage({
               </div>
             ) : null}
           </>
+        )
+      ) : choosingAlbum ? (
+        albumsLoading ? (
+          <p className="muted content-status">Loading albums…</p>
+        ) : albumChoices.length === 0 ? (
+          <div className="empty">
+            <h2>No other albums</h2>
+            <p className="muted">
+              Create another album first, then you can add these photos to it.
+            </p>
+            <Link className="btn secondary" to="/albums">
+              Go to Albums
+            </Link>
+          </div>
+        ) : (
+          <div className="albums-grid">
+            {albumChoices.map((choice) => (
+              <button
+                className="album-tile album-tile-button"
+                key={choice.id}
+                type="button"
+                disabled={!!addingToAlbumId}
+                aria-label={`Add selected photos to ${choice.title}`}
+                onClick={() => void addSelectedToAlbum(choice)}
+              >
+                <div className="album-cover">
+                  {choice.cover_url ? (
+                    <img src={choice.cover_url} alt="" />
+                  ) : (
+                    <div className="album-cover-empty" aria-hidden="true" />
+                  )}
+                </div>
+                <h2 className="album-title">{choice.title}</h2>
+                <p className="muted album-meta">
+                  {choice.year}
+                  {choice.media_count
+                    ? ` · ${choice.media_count} item${choice.media_count === 1 ? "" : "s"}`
+                    : ""}
+                  {addingToAlbumId === choice.id ? " · Adding…" : ""}
+                </p>
+              </button>
+            ))}
+          </div>
         )
       ) : loading ? (
         <p className="muted content-status">Loading album…</p>

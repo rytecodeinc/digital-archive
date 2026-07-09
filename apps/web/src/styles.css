@@ -651,6 +651,20 @@ a {
   cursor: pointer;
 }
 
+.album-tile-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+}
+
+.album-tile-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .album-tile:hover .album-cover {
   filter: brightness(0.97);
 }
