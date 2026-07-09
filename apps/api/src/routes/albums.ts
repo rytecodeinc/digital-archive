@@ -133,3 +133,43 @@ albumRoutes.post("/", async (c) => {
 
   return c.json({ album }, 201);
 });
+
+albumRoutes.get("/:id", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+
+  const rows = await sql(c.env)`
+    select
+      a.id,
+      a.year,
+      a.location_slug,
+      a.title,
+      a.description,
+      a.visibility,
+      a.media_count,
+      a.photo_count,
+      a.video_count,
+      a.start_date,
+      a.end_date,
+      a.published_at,
+      a.created_at,
+      a.updated_at,
+      a.cover_media_id,
+      m.r2_thumb_key,
+      m.r2_preview_key,
+      m.r2_original_key
+    from albums a
+    left join media m
+      on m.id = a.cover_media_id
+      and m.deleted_at is null
+    where a.id = ${id}
+      and a.archive_id = ${owner.archive.id}
+    limit 1
+  `;
+
+  if (!rows.length) return c.json({ error: "not found" }, 404);
+
+  const album = await mapAlbumRow(c.env, rows[0] as Record<string, unknown>);
+  return c.json({ album });
+});

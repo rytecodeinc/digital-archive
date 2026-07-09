@@ -642,6 +642,19 @@ a {
   display: grid;
   gap: 0.45rem;
   min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.album-tile:hover .album-cover {
+  filter: brightness(0.97);
+}
+
+.album-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 12px;
 }
 
 .album-cover {

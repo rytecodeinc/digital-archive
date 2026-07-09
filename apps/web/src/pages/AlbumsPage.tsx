@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { api, type AlbumSummary, type User } from "../lib/api";
 import { LibraryShell } from "../components/LibraryShell";
 
@@ -155,7 +156,12 @@ export function AlbumsPage({
         ) : (
           <div className="albums-grid">
             {albums.map((album) => (
-              <article className="album-tile" key={album.id}>
+              <Link
+                className="album-tile"
+                key={album.id}
+                to={`/albums/${album.id}`}
+                aria-label={`Open album ${album.title}`}
+              >
                 <div className="album-cover">
                   {album.cover_url ? (
                     <img src={album.cover_url} alt="" />
@@ -170,7 +176,7 @@ export function AlbumsPage({
                     ? ` · ${album.media_count} item${album.media_count === 1 ? "" : "s"}`
                     : ""}
                 </p>
-              </article>
+              </Link>
             ))}
           </div>
         )}

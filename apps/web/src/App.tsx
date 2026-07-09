@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { api, type User } from "./lib/api";
+import { AlbumDetailPage } from "./pages/AlbumDetailPage";
 import { AlbumsPage } from "./pages/AlbumsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { TimelinePage } from "./pages/TimelinePage";
@@ -61,6 +62,16 @@ export function App() {
         element={
           user ? (
             <AlbumsPage user={user} onLogout={onLogout} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/albums/:albumId"
+        element={
+          user ? (
+            <AlbumDetailPage user={user} onLogout={onLogout} />
           ) : (
             <Navigate to="/login" replace />
           )
