@@ -10,20 +10,19 @@
 | App login password | set by you (seeded into DB) |
 | Supabase project URL | `https://sqtdpkvzeyckerxqfeic.supabase.co` |
 
-## Still required: Postgres URI
+## Postgres URI
 
-The project URL above is **not** a Postgres connection string.
-
-1. Open Supabase → your project → **Connect** (or Project Settings → Database).
-2. Copy the **Session pooler** URI (port `5432`), which looks like:
+Supabase’s “direct” URI (`db.<ref>.supabase.co`) is often **IPv6-only**. This environment (and many serverless hosts) need the **Session pooler** instead:
 
 ```text
-postgresql://postgres.sqtdpkvzeyckerxqfeic:[YOUR-DB-PASSWORD]@aws-1-us-west-2.pooler.supabase.com:5432/postgres
+postgresql://postgres.sqtdpkvzeyckerxqfeic:[DB-PASSWORD]@aws-1-us-west-2.pooler.supabase.com:5432/postgres
 ```
 
-3. `[YOUR-DB-PASSWORD]` is the **database password** chosen when the Supabase project was created — it is separate from the app login password (`Admin8712!`).
+Notes:
 
-If you forgot the DB password: Database Settings → reset database password, then use the new value in `DATABASE_URL`.
+- URL-encode special characters in the password (`!` → `%21`).
+- DB password ≠ app login password.
+- Project API host `https://….supabase.co` is not a Postgres URI.
 
 ## Local env files
 
@@ -48,9 +47,13 @@ Create `apps/api/.dev.vars` with the same `DATABASE_URL`, R2 keys, and `SESSION_
 npm install
 npm run db:migrate
 npm run db:seed
-npm run dev:api    # http://127.0.0.1:8787
+npm run dev:api    # Node local API on http://127.0.0.1:8787
 npm run dev:web    # http://127.0.0.1:5173
 ```
+
+`npm run dev:api` uses a Node server so local Postgres TLS works in restricted networks.
+Production still deploys with `npm run deploy -w @digital-archive/api` (Cloudflare Worker).
+Optional: `npm run dev:worker -w @digital-archive/api` for wrangler-local Worker runtime.
 
 Open the web app, sign in as `rinarasia@icloud.com`, upload photos.
 

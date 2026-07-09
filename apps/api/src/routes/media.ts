@@ -63,13 +63,45 @@ mediaRoutes.post("/upload-sessions", async (c) => {
         where archive_id = ${owner.archive.id}
           and content_hash = ${hashBytes}
           and deleted_at is null
+          and status in ('ready', 'processing', 'pending_upload')
+        order by case status when 'ready' then 0 when 'processing' then 1 else 2 end
         limit 1
       `;
-      if (existing.length) {
+      if (existing.length && existing[0].status === "ready") {
         return c.json({
           deduped: true,
           media_id: existing[0].id,
           status: existing[0].status,
+        });
+      }
+      if (existing.length && existing[0].status === "pending_upload") {
+        // Resume an unfinished upload for the same bytes.
+        const pending = await sql(c.env)`
+          select id, r2_original_key, mime_type, byte_size
+          from media where id = ${existing[0].id as string} limit 1
+        `;
+        const row = pending[0] as {
+          id: string;
+          r2_original_key: string;
+          mime_type: string;
+          byte_size: number;
+        };
+        const uploadUrl = await presignPut(
+          c.env,
+          row.r2_original_key,
+          row.mime_type,
+          Number(row.byte_size),
+        );
+        return c.json({
+          media_id: row.id,
+          upload_url: uploadUrl,
+          upload_headers: {
+            "Content-Type": row.mime_type,
+            "Content-Length": String(row.byte_size),
+          },
+          r2_key: row.r2_original_key,
+          expires_in: 900,
+          resumed: true,
         });
       }
     } catch {
@@ -168,6 +200,7 @@ mediaRoutes.post("/upload-sessions/batch", async (c) => {
           where archive_id = ${owner.archive.id}
             and content_hash = ${hashBytes}
             and deleted_at is null
+            and status = 'ready'
           limit 1
         `;
         if (existing.length) {

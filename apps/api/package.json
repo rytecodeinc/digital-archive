@@ -3,19 +3,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "tsx src/local.ts",
+    "dev:worker": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.830.0",
     "@aws-sdk/s3-request-presigner": "^3.830.0",
+    "@hono/node-server": "^2.0.8",
     "bcryptjs": "^3.0.2",
     "hono": "^4.8.3",
     "postgres": "^3.4.7"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250620.0",
+    "@types/node": "^24.0.10",
+    "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "wrangler": "^4.22.0"
   }
