@@ -10,7 +10,7 @@ See **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** for the complete system d
 
 - **Client:** responsive **web app first**; optional Swift companion later (same API)
 - **Upload:** phone or computer via the web app → Cloudflare R2
-- **R2:** one bucket named **`media`** (photos + future videos together; not separate `photos` / `videos` buckets)
+- **R2:** one bucket named **`digital-archive-media`** (photos + future videos together)
 - **Auth (v1):** email login (no Google OAuth yet); owner `rinarasia@icloud.com`
 - **Hosting:** Cloudflare Pages + Workers + R2 (not GitHub Pages alone)
 - **v1:** photos only (JPEG/HEIC), private timeline like Google Photos

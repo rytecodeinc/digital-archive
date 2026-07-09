@@ -332,14 +332,14 @@ albums 0..1── cover → media
 Single bucket (or one private + one public derivatives bucket). Keys are content-addressable where possible:
 
 ```
-r2://media/
+r2://digital-archive-media/
   originals/{archive_id}/{yyyy}/{mm}/{media_id}/{content_hash}.{ext}
   derivatives/{archive_id}/{media_id}/thumb.webp
   derivatives/{archive_id}/{media_id}/preview.webp
   derivatives/{archive_id}/{media_id}/poster.jpg
 ```
 
-Prefer **one** bucket named something general like `media` (or `digital-archive-media` if you want the repo name reflected). Do **not** create separate `photos` and `videos` buckets — type lives in the DB (`media.type`) and in key prefixes, not in bucket sprawl.
+**Locked bucket name: `digital-archive-media`.** One bucket for photos and future videos — type lives in the DB (`media.type`) and in key prefixes, not in separate buckets.
 
 Rules:
 
@@ -734,20 +734,14 @@ Do these in the Cloudflare / DB consoles. No app code required yet.
 
 ### A. Cloudflare account (you have this)
 
-1. **Create one R2 bucket** for all media — **not** separate `photos` and `videos` buckets.
-   - **Recommended name: `media`** (or `digital-archive-media` to match the repo). Short and future-proof when MP4 lands.
-   - Do **not** use `photos` now and add `videos` later — that splits one library across buckets, doubles bindings/GC/CDN config, and fights the “one file, many albums” model.
-   - Avoid hostname-style names like `photos.digital-archive.pages.dev` (bucket names are not domains / Pages hosts)
-   - Object **keys** already separate concerns (`originals/...`, `derivatives/...`); DB column `media.type` distinguishes photo vs video
-   - Rules: lowercase, digits, hyphens; keep the name stable (renaming later is painful)
-   - Public site URLs come from **Pages** (`*.pages.dev`); optional later media host e.g. `media.yourdomain.com` → same bucket
-2. **Create an API token** with R2 read/write for that bucket (for local/dev and Workers bindings).
-3. **Note account ID** (R2 S3 endpoint uses it).
-4. Optionally enable **R2 public access / custom domain** later for public derivatives only — keep originals private.
-5. Plan to create (when coding starts):
+1. **R2 bucket** — done: **`digital-archive-media`** (single bucket for photos + future videos).
+2. **Create an R2 API token** with Object Read & Write scoped to `digital-archive-media` (needed for Workers bindings / local presign).
+3. **Note Account ID** (Dashboard → overview; used in the S3 API endpoint).
+4. Keep the bucket **private** for now. Public derivatives / custom domain come later.
+5. Create when coding starts (not required yet):
    - **Worker** for API
-   - **Pages** project for the web UI (this is what gets `something.pages.dev`)
-   - **Queue** for thumbnail jobs (can wait until phase 2)
+   - **Pages** project for the web UI (`*.pages.dev`)
+   - **Queue** for thumbnail jobs (phase 2)
 
 ### B. Postgres (pick one free tier)
 
@@ -773,7 +767,7 @@ Do these in the Cloudflare / DB consoles. No app code required yet.
 | Secret | Source |
 |---|---|
 | `DATABASE_URL` | Neon/Supabase |
-| R2 bucket name, account ID, access key, secret key | Cloudflare R2 |
+| R2 bucket `digital-archive-media`, account ID, access key, secret key | Cloudflare R2 |
 | `SESSION_SECRET` | Generate random string |
 | Owner password (or set on first login) | You choose |
 
