@@ -90,6 +90,10 @@ export const api = {
       `/api/owner/media/${id}/complete`,
       { method: "POST" },
     ),
+  downloadMedia: (id: string) =>
+    request<{ download_url: string; filename: string; mime_type: string }>(
+      `/api/owner/media/${id}/download`,
+    ),
   deleteMedia: (id: string) =>
     request<{ ok: boolean }>(`/api/owner/media/${id}`, { method: "DELETE" }),
 };

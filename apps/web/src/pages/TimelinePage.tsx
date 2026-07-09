@@ -124,10 +124,20 @@ export function TimelinePage({
     }
   }
 
-  async function onDelete(id: string) {
-    if (!confirm("Delete this photo from the archive?")) return;
+  async function onDelete(id: string, options?: { skipConfirm?: boolean }) {
+    if (!options?.skipConfirm && !confirm("Delete this photo from the archive?")) {
+      return;
+    }
     await api.deleteMedia(id);
-    setItems((prev) => prev.filter((item) => item.id !== id));
+    setItems((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      setLightboxIndex((current) => {
+        if (current === null) return null;
+        if (!next.length) return null;
+        return Math.min(current, next.length - 1);
+      });
+      return next;
+    });
   }
 
   return (
@@ -217,6 +227,9 @@ export function TimelinePage({
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onNavigate={setLightboxIndex}
+          onDelete={async (id) => {
+            await onDelete(id, { skipConfirm: true });
+          }}
         />
       ) : null}
     </div>

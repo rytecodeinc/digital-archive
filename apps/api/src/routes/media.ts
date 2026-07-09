@@ -5,6 +5,7 @@ import { sql } from "../lib/db";
 import {
   ALLOWED_PHOTO_MIME,
   extFromMime,
+  getObject,
   headObject,
   originalKey,
   presignGet,
@@ -436,6 +437,93 @@ mediaRoutes.post("/:id/complete", async (c) => {
   `;
 
   return c.json({ media_id: id, status: "ready" });
+});
+
+mediaRoutes.get("/:id/download", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+
+  const rows = await sql(c.env)`
+    select id, r2_original_key, mime_type, taken_at, uploaded_at
+    from media
+    where id = ${id}
+      and archive_id = ${owner.archive.id}
+      and deleted_at is null
+      and status = 'ready'
+    limit 1
+  `;
+  if (!rows.length) return c.json({ error: "not found" }, 404);
+
+  const media = rows[0] as {
+    id: string;
+    r2_original_key: string;
+    mime_type: string;
+    taken_at: string | null;
+    uploaded_at: string;
+  };
+
+  const key = media.r2_original_key;
+  const ext = key.includes(".") ? key.slice(key.lastIndexOf(".") + 1) : "bin";
+  const stamp = new Date(media.taken_at || media.uploaded_at)
+    .toISOString()
+    .slice(0, 10);
+  const filename = `archive-${stamp}-${media.id.slice(0, 8)}.${ext}`;
+
+  // Same-origin proxy URL avoids browser→R2 CORS for downloads.
+  return c.json({
+    download_url: `/api/owner/media/${id}/content?download=1`,
+    filename,
+    mime_type: media.mime_type,
+  });
+});
+
+mediaRoutes.get("/:id/content", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+  const asDownload = c.req.query("download") === "1";
+
+  const rows = await sql(c.env)`
+    select id, r2_original_key, mime_type, taken_at, uploaded_at
+    from media
+    where id = ${id}
+      and archive_id = ${owner.archive.id}
+      and deleted_at is null
+      and status = 'ready'
+    limit 1
+  `;
+  if (!rows.length) return c.json({ error: "not found" }, 404);
+
+  const media = rows[0] as {
+    id: string;
+    r2_original_key: string;
+    mime_type: string;
+    taken_at: string | null;
+    uploaded_at: string;
+  };
+
+  const object = await getObject(c.env, media.r2_original_key);
+  if (!object.Body) return c.json({ error: "object missing" }, 404);
+
+  const bytes = await object.Body.transformToByteArray();
+  const ext = media.r2_original_key.includes(".")
+    ? media.r2_original_key.slice(media.r2_original_key.lastIndexOf(".") + 1)
+    : "bin";
+  const stamp = new Date(media.taken_at || media.uploaded_at)
+    .toISOString()
+    .slice(0, 10);
+  const filename = `archive-${stamp}-${media.id.slice(0, 8)}.${ext}`;
+
+  return c.body(bytes, 200, {
+    "Content-Type": media.mime_type || "application/octet-stream",
+    ...(asDownload
+      ? {
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        }
+      : {}),
+    "Cache-Control": "private, max-age=60",
+  });
 });
 
 mediaRoutes.patch("/:id", async (c) => {

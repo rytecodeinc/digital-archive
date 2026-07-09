@@ -72,6 +72,16 @@ export async function headObject(env: Env, key: string) {
   );
 }
 
+export async function getObject(env: Env, key: string) {
+  const client = r2Client(env);
+  return client.send(
+    new GetObjectCommand({
+      Bucket: env.R2_BUCKET,
+      Key: key,
+    }),
+  );
+}
+
 export async function presignGet(env: Env, key: string, expiresIn = 3600) {
   const client = r2Client(env);
   const command = new GetObjectCommand({
