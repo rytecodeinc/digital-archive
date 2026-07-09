@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   readImageDimensions,
@@ -6,6 +6,7 @@ import {
   type TimelineItem,
   type User,
 } from "../lib/api";
+import { groupTimelineByDay } from "../lib/timelineGroups";
 
 export function TimelinePage({
   user,
@@ -21,6 +22,8 @@ export function TimelinePage({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const dayGroups = useMemo(() => groupTimelineByDay(items), [items]);
 
   async function load(initial = false) {
     setError(null);
@@ -141,7 +144,7 @@ export function TimelinePage({
           <div>
             <h1 style={{ margin: 0 }}>Timeline</h1>
             <p className="muted" style={{ margin: "0.25rem 0 0" }}>
-              Newest first · photos only in v1
+              Grouped by day · newest first
             </p>
           </div>
           <div className="topbar-actions">
@@ -179,22 +182,33 @@ export function TimelinePage({
           </div>
         ) : (
           <>
-            <div className="timeline-grid">
-              {items.map((item, index) => (
-                <div
-                  className="tile"
-                  key={item.id}
-                  style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}
-                >
-                  <img src={item.thumb_url} alt={item.caption || "Archive photo"} loading="lazy" />
-                  <button
-                    className="btn danger delete"
-                    type="button"
-                    onClick={() => void onDelete(item.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
+            <div className="timeline-days">
+              {dayGroups.map((group) => (
+                <section className="day-section" key={group.key}>
+                  <h2 className="day-header">{group.label}</h2>
+                  <div className="timeline-grid">
+                    {group.items.map((item, index) => (
+                      <div
+                        className="tile"
+                        key={item.id}
+                        style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}
+                      >
+                        <img
+                          src={item.thumb_url}
+                          alt={item.caption || "Archive photo"}
+                          loading="lazy"
+                        />
+                        <button
+                          className="btn danger delete"
+                          type="button"
+                          onClick={() => void onDelete(item.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
             {nextCursor ? (
