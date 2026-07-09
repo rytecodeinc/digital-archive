@@ -233,7 +233,7 @@ a {
 .day-header-row {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0;
   min-height: 1.75rem;
 }
 
@@ -244,6 +244,7 @@ a {
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
+  transition: transform 140ms ease;
 }
 
 .selection-title {
@@ -294,18 +295,28 @@ a {
 }
 
 .section-check {
-  opacity: 0;
-  pointer-events: none;
+  /* Collapsed when hidden so the day title stays flush with the photo row. */
   flex: 0 0 auto;
+  width: 0;
+  height: 1.45rem;
+  margin: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
   color: transparent;
+  transform: scale(0.85);
 }
 
 .section-check.is-visible,
 .day-section.is-hovering .section-check,
 .section-check.is-checked,
 .section-check.is-partial {
+  width: 1.45rem;
+  margin-right: 0.55rem;
   opacity: 1;
+  overflow: visible;
   pointer-events: auto;
+  transform: scale(1);
 }
 
 .section-check.is-checked,
@@ -596,9 +607,14 @@ a {
     pointer-events: auto;
   }
 
+  /* On touch devices, keep section check available without hover. */
   .section-check {
+    width: 1.45rem;
+    margin-right: 0.55rem;
     opacity: 1;
+    overflow: visible;
     pointer-events: auto;
+    transform: scale(1);
   }
 
   .lightbox-nav {
