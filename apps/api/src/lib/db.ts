@@ -50,6 +50,8 @@ export function sql(env: Env) {
       idle_timeout: 20,
       connect_timeout: 10,
       max_lifetime: 60 * 30,
+      // Workers free plan: 50 subrequests. Aggressive reconnects burn that budget.
+      backoff: false,
       // Hyperdrive terminates TLS to the origin; do not pass a custom ssl object.
       // Direct DATABASE_URL still needs TLS to Supabase.
       ...(viaHyperdrive ? {} : { ssl: "require" as const }),
