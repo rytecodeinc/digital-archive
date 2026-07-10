@@ -135,29 +135,34 @@ The web app calls **same-origin** `/api/...`. Cloudflare Pages Function
 stays on `*.pages.dev` (avoids browsers blocking cross-site cookies on
 `workers.dev`).
 
-Optional override (only if you intentionally call the Worker directly):
+Do **not** set Pages env `VITE_API_BASE_URL` to the Worker URL. That makes the
+browser call `workers.dev` cross-site, cookies get blocked, and timeline returns
+`401 unauthorized`. Leave it unset so the app uses same-origin `/api`.
 
-| Pages env var | Value |
-|---|---|
-| `VITE_API_BASE_URL` | `https://digital-archive.rytecode.workers.dev` |
-
-If you use the override, login cookies need `SameSite=None; Secure` and the
-browser must allow third-party cookies.
+If `https://digital-archive-1lq.pages.dev` still loads an old JS bundle that
+contains `digital-archive.rytecode.workers.dev`, open Pages → **Settings** →
+**Builds & deployments** → set **Production branch** to `main`, then
+**Retry deployment** on the latest `main` build (or use
+`https://main.digital-archive-1lq.pages.dev` until production catches up).
 
 ### Worker database (required for login)
 
-Direct `DATABASE_URL` from a Worker often fails with **Too many subrequests** on the free plan. Use **Cloudflare Hyperdrive** (dashboard, no CLI):
+Direct `DATABASE_URL` from a Worker often fails with **Too many subrequests** on the free plan. Use **Cloudflare Hyperdrive**:
 
 1. Supabase → **Project Settings** → **Database** → **Connection string** → **Direct connection**  
-   (Hyperdrive wants the direct host `db.<project>.supabase.co`, not the pooler.)
+   (Hyperdrive wants the direct host `db.<project>.supabase.co`, not the pooler. Choose **Public database** in Hyperdrive.)
 2. Cloudflare dashboard → **Hyperdrive** → **Create configuration**
 3. Name it e.g. `digital-archive-supabase`, paste the Direct connection string, create
-4. Copy the Hyperdrive **ID**
-5. Cloudflare → **Workers & Pages** → Worker **`digital-archive`** → **Settings** → **Bindings** → **Add** → **Hyperdrive**
-   - Variable name: `HYPERDRIVE`
-   - Hyperdrive config: the one you just created
-6. Save / deploy if prompted
-7. Check: `https://digital-archive.rytecode.workers.dev/api/health?db=1`  
+4. Copy the Hyperdrive **ID** (already pinned in repo as `9ddab8347d954db4bebe08ed5b56ad23`)
+5. Keep the ID in **both** `wrangler.toml` and `apps/api/wrangler.toml` so Workers Builds does not wipe it:
+
+```toml
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "9ddab8347d954db4bebe08ed5b56ad23"
+```
+
+6. Check: `https://digital-archive.rytecode.workers.dev/api/health?db=1`  
    Expect `"database":"ok"` and `"hyperdrive":true`
 
 Optional fallback (local / without Hyperdrive): Worker secret `DATABASE_URL` using the Supabase **Session pooler** URI (`aws-…pooler.supabase.com:5432`).
