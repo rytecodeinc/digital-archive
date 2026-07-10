@@ -14,9 +14,10 @@ function workerOrigin(env: Record<string, unknown> | undefined): string {
     typeof env?.CF_PAGES_BRANCH === "string" ? env.CF_PAGES_BRANCH.trim() : "";
   if (!branch || branch === "main") return PROD_WORKER_ORIGIN;
 
-  // Workers Builds branch alias: <branch>-<worker-name>.<subdomain>
-  // Branch names are used as-is (slashes already become hyphens in git branch names we use).
-  return `https://${branch}-${WORKER_NAME}.${WORKERS_SUBDOMAIN}`;
+  // Workers Builds branch alias: <sanitized-branch>-<worker-name>.<subdomain>
+  // e.g. cursor/lightbox-info-panel-94d0 → cursor-lightbox-info-panel-94d0-digital-archive...
+  const sanitized = branch.replace(/[^a-zA-Z0-9-]/g, "-").replace(/-+/g, "-");
+  return `https://${sanitized}-${WORKER_NAME}.${WORKERS_SUBDOMAIN}`;
 }
 
 /**
