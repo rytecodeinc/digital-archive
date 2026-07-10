@@ -4,6 +4,7 @@ import { api, type User } from "./lib/api";
 import { AlbumDetailPage } from "./pages/AlbumDetailPage";
 import { AlbumsPage } from "./pages/AlbumsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { PhotoPage } from "./pages/PhotoPage";
 import { TimelinePage } from "./pages/TimelinePage";
 
 export function App() {
@@ -52,6 +53,16 @@ export function App() {
         element={
           user ? (
             <TimelinePage user={user} view="photos" onLogout={onLogout} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/photo/:publicId"
+        element={
+          user ? (
+            <PhotoPage user={user} onLogout={onLogout} />
           ) : (
             <Navigate to="/login" replace />
           )

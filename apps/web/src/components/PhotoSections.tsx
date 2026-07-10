@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { TimelineItem } from "../lib/api";
 import { groupTimelineByDay } from "../lib/timelineGroups";
 import { JustifiedDayGrid } from "./JustifiedDayGrid";
-import { Lightbox } from "./Lightbox";
 
 function CheckIcon() {
   return (
@@ -22,8 +22,6 @@ export function PhotoSections({
   onSelectedIdsChange,
   forceSelectionMode = false,
   lightboxEnabled = true,
-  canDelete = false,
-  onDelete,
 }: {
   items: TimelineItem[];
   getDate?: (item: TimelineItem) => string;
@@ -31,13 +29,15 @@ export function PhotoSections({
   onSelectedIdsChange: (next: Set<string>) => void;
   /** When true, clicks always toggle selection (e.g. album add-picker). */
   forceSelectionMode?: boolean;
-  /** When false, photos never open the lightbox. */
+  /** When false, photos never open the photo page. */
   lightboxEnabled?: boolean;
   canDelete?: boolean;
   onDelete?: (id: string) => Promise<void> | void;
+  returnPath?: string;
 }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [hoveredSectionKey, setHoveredSectionKey] = useState<string | null>(null);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const dayGroups = useMemo(
     () => groupTimelineByDay(items, new Date(), getDate),
@@ -45,6 +45,12 @@ export function PhotoSections({
   );
   const selectionActive = selectedIds.size > 0;
   const inSelectionMode = forceSelectionMode || selectionActive;
+  const returnPath =
+    location.pathname.startsWith("/albums/")
+      ? location.pathname
+      : location.pathname.startsWith("/trash")
+        ? "/trash"
+        : "/photos";
 
   function toggleSelect(id: string) {
     const next = new Set(selectedIds);
@@ -69,85 +75,62 @@ export function PhotoSections({
       toggleSelect(item.id);
       return;
     }
-    if (!lightboxEnabled) return;
-    const idx = items.findIndex((entry) => entry.id === item.id);
-    if (idx >= 0) setLightboxIndex(idx);
+    if (!lightboxEnabled || !item.public_id) return;
+    navigate(`/photo/${item.public_id}`, { state: { from: returnPath } });
   }
 
   return (
-    <>
-      <div className="timeline-days">
-        {dayGroups.map((group) => {
-          const groupIds = group.items.map((item) => item.id);
-          const selectedInGroup = groupIds.filter((id) =>
-            selectedIds.has(id),
-          ).length;
-          const allSelected =
-            groupIds.length > 0 && selectedInGroup === groupIds.length;
-          const someSelected = selectedInGroup > 0 && !allSelected;
-          const showSectionCheck =
-            hoveredSectionKey === group.key || selectedInGroup > 0;
+    <div className="timeline-days">
+      {dayGroups.map((group) => {
+        const groupIds = group.items.map((item) => item.id);
+        const selectedInGroup = groupIds.filter((id) =>
+          selectedIds.has(id),
+        ).length;
+        const allSelected =
+          groupIds.length > 0 && selectedInGroup === groupIds.length;
+        const someSelected = selectedInGroup > 0 && !allSelected;
+        const showSectionCheck =
+          hoveredSectionKey === group.key || selectedInGroup > 0;
 
-          return (
-            <section
-              className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
-              key={group.key}
-              onMouseEnter={() => setHoveredSectionKey(group.key)}
-              onMouseLeave={() =>
-                setHoveredSectionKey((current) =>
-                  current === group.key ? null : current,
-                )
-              }
-            >
-              <div className="day-header-row">
-                <button
-                  className={`section-check${allSelected ? " is-checked" : ""}${
-                    someSelected ? " is-partial" : ""
-                  }${showSectionCheck ? " is-visible" : ""}`}
-                  type="button"
-                  aria-label={
-                    allSelected
-                      ? `Deselect all photos from ${group.label}`
-                      : `Select all photos from ${group.label}`
-                  }
-                  aria-pressed={allSelected}
-                  onClick={() => toggleSection(groupIds)}
-                >
-                  <CheckIcon />
-                </button>
-                <h2 className="day-header">{group.label}</h2>
-              </div>
-              <JustifiedDayGrid
-                items={group.items}
-                selectedIds={selectedIds}
-                selectionActive={inSelectionMode}
-                onToggleSelect={toggleSelect}
-                onOpen={openItem}
-              />
-            </section>
-          );
-        })}
-      </div>
-
-      {lightboxEnabled && lightboxIndex !== null ? (
-        <Lightbox
-          items={items}
-          index={lightboxIndex}
-          canDelete={canDelete}
-          onClose={() => setLightboxIndex(null)}
-          onNavigate={setLightboxIndex}
-          onDelete={async (id) => {
-            if (!onDelete) return;
-            await onDelete(id);
-            setLightboxIndex((current) => {
-              if (current === null) return null;
-              const nextItems = items.filter((item) => item.id !== id);
-              if (!nextItems.length) return null;
-              return Math.min(current, nextItems.length - 1);
-            });
-          }}
-        />
-      ) : null}
-    </>
+        return (
+          <section
+            className={`day-section${showSectionCheck ? " is-hovering" : ""}`}
+            key={group.key}
+            onMouseEnter={() => setHoveredSectionKey(group.key)}
+            onMouseLeave={() =>
+              setHoveredSectionKey((current) =>
+                current === group.key ? null : current,
+              )
+            }
+          >
+            <div className="day-header-row">
+              <button
+                className={`section-check${allSelected ? " is-checked" : ""}${
+                  someSelected ? " is-partial" : ""
+                }${showSectionCheck ? " is-visible" : ""}`}
+                type="button"
+                aria-label={
+                  allSelected
+                    ? `Deselect all photos from ${group.label}`
+                    : `Select all photos from ${group.label}`
+                }
+                aria-pressed={allSelected}
+                onClick={() => toggleSection(groupIds)}
+              >
+                <CheckIcon />
+              </button>
+              <h2 className="day-header">{group.label}</h2>
+            </div>
+            <JustifiedDayGrid
+              items={group.items}
+              selectedIds={selectedIds}
+              selectionActive={inSelectionMode}
+              onToggleSelect={toggleSelect}
+              onOpen={openItem}
+            />
+          </section>
+        );
+      })}
+    </div>
   );
 }

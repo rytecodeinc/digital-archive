@@ -52,6 +52,7 @@ end $$;
 
 create table if not exists media (
   id                  uuid primary key default gen_random_uuid(),
+  public_id           text not null unique,
   archive_id          uuid not null references archives(id),
   uploaded_by         uuid not null references users(id),
   type                media_type not null default 'photo',
