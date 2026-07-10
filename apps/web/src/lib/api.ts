@@ -36,6 +36,15 @@ export type AlbumSummary = {
   cover_url: string | null;
 };
 
+export type StorageUsage = {
+  used_bytes: number;
+  quota_bytes: number;
+  used_gb: number;
+  quota_gb: number;
+  percent: number;
+  media_count: number;
+};
+
 // Same-origin `/api` by default so session cookies stay on the Pages host.
 // Override with VITE_API_BASE_URL only if you intentionally call the Worker directly.
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
@@ -70,6 +79,7 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+  storage: () => request<StorageUsage>("/api/owner/media/storage"),
   timeline: (cursor?: string | null) => {
     const q = new URLSearchParams({ limit: "60" });
     if (cursor) q.set("cursor", cursor);

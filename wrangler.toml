@@ -9,6 +9,7 @@ compatibility_flags = ["nodejs_compat"]
 R2_BUCKET = "digital-archive-media"
 CF_ACCOUNT_ID = "75d07e9024b11886801cce0718edc814"
 OWNER_EMAIL = "rinarasia@icloud.com"
+STORAGE_QUOTA_GB = "15"
 
 [[hyperdrive]]
 binding = "HYPERDRIVE"
