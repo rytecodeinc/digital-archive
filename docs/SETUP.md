@@ -112,7 +112,7 @@ Build settings for the React app:
 | Framework preset | Vite |
 | Build command | `npm run build -w @digital-archive/web` |
 | Build output directory | `apps/web/dist` |
-| Production branch | your deploy branch (e.g. `main` or `cursor/phase1-archive-app-94d0`) |
+| Production branch | `main` (required — otherwise `*.pages.dev` keeps an old build that calls `workers.dev` and login cookies fail with 401) |
 
 **Do not** put `DATABASE_URL` / R2 / `SESSION_SECRET` on Pages. Those belong on the Worker.
 
