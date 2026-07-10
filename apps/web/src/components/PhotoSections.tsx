@@ -15,6 +15,12 @@ function CheckIcon() {
   );
 }
 
+export type PhotoRouteState = {
+  from: string;
+  items: TimelineItem[];
+  canDelete?: boolean;
+};
+
 export function PhotoSections({
   items,
   getDate,
@@ -22,6 +28,7 @@ export function PhotoSections({
   onSelectedIdsChange,
   forceSelectionMode = false,
   lightboxEnabled = true,
+  canDelete = false,
 }: {
   items: TimelineItem[];
   getDate?: (item: TimelineItem) => string;
@@ -76,7 +83,12 @@ export function PhotoSections({
       return;
     }
     if (!lightboxEnabled || !item.public_id) return;
-    navigate(`/photo/${item.public_id}`, { state: { from: returnPath } });
+    const state: PhotoRouteState = {
+      from: returnPath,
+      items,
+      canDelete,
+    };
+    navigate(`/photo/${item.public_id}`, { state });
   }
 
   return (
