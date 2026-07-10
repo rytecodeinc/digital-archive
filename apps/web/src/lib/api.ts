@@ -47,6 +47,33 @@ export type StorageUsage = {
   media_count: number;
 };
 
+export type MediaInfo = {
+  caption: string | null;
+  description: string | null;
+  taken_at: string | null;
+  taken_at_source: string | null;
+  uploaded_at: string;
+  width: number | null;
+  height: number | null;
+  byte_size: number | null;
+  mime_type: string;
+  filename: string;
+  megapixels: number | null;
+  location_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  camera_name: string | null;
+  aperture: string | null;
+  exposure_time: string | null;
+  focal_length: string | null;
+  iso: number | null;
+  upload_source: string;
+  timezone: string | null;
+  specs_line: string | null;
+  size_label: string | null;
+  dimensions_label: string | null;
+};
+
 // Same-origin `/api` by default so session cookies stay on the Pages host.
 // Override with VITE_API_BASE_URL only if you intentionally call the Worker directly.
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
@@ -145,6 +172,8 @@ export const api = {
     request<{ download_url: string; filename: string; mime_type: string }>(
       `/api/owner/media/${id}/download`,
     ),
+  mediaInfo: (id: string) =>
+    request<{ info: MediaInfo }>(`/api/owner/media/${id}/info`),
   deleteMedia: (id: string) =>
     request<{ ok: boolean }>(`/api/owner/media/${id}`, { method: "DELETE" }),
   batchDeleteMedia: async (ids: string[]) => {
