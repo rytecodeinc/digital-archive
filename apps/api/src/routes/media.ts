@@ -28,6 +28,40 @@ function hexToBytes(hex: string) {
   return out;
 }
 
+/** Archive storage usage (originals in library + trash). */
+mediaRoutes.get("/storage", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const rows = await sql(c.env)`
+    select
+      coalesce(sum(byte_size), 0)::bigint as used_bytes,
+      count(*)::int as media_count
+    from media
+    where archive_id = ${owner.archive.id}
+      and status in ('ready', 'deleted', 'processing')
+  `;
+
+  const usedBytes = Number(rows[0]?.used_bytes ?? 0);
+  const mediaCount = Number(rows[0]?.media_count ?? 0);
+  const quotaGb = Math.max(
+    1,
+    Number(c.env.STORAGE_QUOTA_GB || 15) || 15,
+  );
+  const quotaBytes = quotaGb * 1024 * 1024 * 1024;
+  const usedGb = usedBytes / (1024 * 1024 * 1024);
+  const percent = Math.min(100, (usedBytes / quotaBytes) * 100);
+
+  return c.json({
+    used_bytes: usedBytes,
+    quota_bytes: quotaBytes,
+    used_gb: usedGb,
+    quota_gb: quotaGb,
+    percent,
+    media_count: mediaCount,
+  });
+});
+
 mediaRoutes.post("/upload-sessions", async (c) => {
   const owner = await requireOwner(c);
   if (owner instanceof Response) return owner;

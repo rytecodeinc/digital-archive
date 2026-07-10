@@ -13,6 +13,8 @@ export type Env = {
   R2_SECRET_ACCESS_KEY: string;
   SESSION_SECRET: string;
   OWNER_EMAIL: string;
+  /** Soft quota shown in the sidebar storage meter (default 15). */
+  STORAGE_QUOTA_GB?: string;
 };
 
 export type UserRow = {

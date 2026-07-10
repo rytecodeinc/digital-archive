@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { User } from "../lib/api";
+import { api, type StorageUsage, type User } from "../lib/api";
 
 export type LibraryNav = "photos" | "albums" | "trash";
 
@@ -34,6 +34,68 @@ function TrashIcon() {
         d="M15 4V3H9v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5zm2 15H7V6h10v13zM9 8h2v9H9zm4 0h2v9h-2z"
       />
     </svg>
+  );
+}
+
+function StorageIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M2 20h20v-4H2v4zm2-3h2v2H4v-2zM2 4v4h20V4H2zm4 3H4V5h2v2zm-4 7h20v-4H2v4zm2-3h2v2H4v-2z"
+      />
+    </svg>
+  );
+}
+
+function formatGb(value: number) {
+  if (value < 0.01) return "0 GB";
+  if (value < 1) return `${value.toFixed(2)} GB`;
+  if (value < 10) return `${value.toFixed(1)} GB`;
+  return `${Math.round(value)} GB`;
+}
+
+function StorageMeter() {
+  const [storage, setStorage] = useState<StorageUsage | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .storage()
+      .then((res) => {
+        if (!cancelled) setStorage(res);
+      })
+      .catch(() => {
+        if (!cancelled) setStorage(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!storage) return null;
+
+  const percent = Math.max(0, Math.min(100, storage.percent));
+  const label = `${formatGb(storage.used_gb)} of ${formatGb(storage.quota_gb)} used`;
+
+  return (
+    <div className="storage-meter" title={label} aria-label={label}>
+      <div className="storage-meter-head">
+        <StorageIcon />
+        <span className="storage-meter-label">Storage</span>
+      </div>
+      <div
+        className="storage-meter-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+        aria-valuetext={label}
+      >
+        <div className="storage-meter-fill" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="storage-meter-text">{label}</p>
+    </div>
   );
 }
 
@@ -100,16 +162,19 @@ export function LibraryShell({
               <span>Albums</span>
             </Link>
           </nav>
-          <nav className="sidebar-footer" aria-label="Trash">
-            <Link
-              className={`sidebar-link${nav === "trash" ? " is-active" : ""}`}
-              to="/trash"
-              aria-current={nav === "trash" ? "page" : undefined}
-            >
-              <TrashIcon />
-              <span>Trash</span>
-            </Link>
-          </nav>
+          <div className="sidebar-footer">
+            <StorageMeter />
+            <nav aria-label="Trash">
+              <Link
+                className={`sidebar-link${nav === "trash" ? " is-active" : ""}`}
+                to="/trash"
+                aria-current={nav === "trash" ? "page" : undefined}
+              >
+                <TrashIcon />
+                <span>Trash</span>
+              </Link>
+            </nav>
+          </div>
         </aside>
 
         <section className="content-frame" aria-label={contentLabel}>
