@@ -1043,20 +1043,6 @@ a {
   color: #c5221f;
 }
 
-.photo-info-description {
-  margin: 0.35rem 1.25rem 1.25rem;
-  padding-bottom: 0.85rem;
-  border-bottom: 1px solid #e8eaed;
-  font-size: 0.95rem;
-  line-height: 1.45;
-  color: #202124;
-  min-height: 1.4em;
-}
-
-.photo-info-placeholder {
-  color: #80868b;
-}
-
 .photo-info-section-label {
   margin: 0.25rem 1.25rem 0.35rem;
   font-size: 0.8rem;
