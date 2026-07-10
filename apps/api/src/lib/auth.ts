@@ -36,10 +36,23 @@ export async function createSession(c: Context<{ Bindings: Env }>, userId: strin
   `;
 
   const secure = new URL(c.req.url).protocol === "https:";
+  const origin = c.req.header("Origin");
+  let sameSite: "Lax" | "None" = "Lax";
+  if (origin) {
+    try {
+      if (new URL(origin).host !== new URL(c.req.url).host) {
+        // Pages (pages.dev) calling Worker (workers.dev) is cross-site.
+        sameSite = "None";
+      }
+    } catch {
+      // keep Lax
+    }
+  }
+
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
-    secure,
-    sameSite: "Lax",
+    secure: secure || sameSite === "None",
+    sameSite,
     path: "/",
     expires: expiresAt,
   });
