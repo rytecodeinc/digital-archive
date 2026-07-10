@@ -6,6 +6,8 @@ export type User = {
 
 export type TimelineItem = {
   id: string;
+  /** Opaque stable id for /photo/:publicId deep links. */
+  public_id: string;
   type: string;
   sort_at: string;
   taken_at: string | null;
@@ -80,6 +82,10 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   storage: () => request<StorageUsage>("/api/owner/media/storage"),
+  mediaByPublicId: (publicId: string) =>
+    request<{ item: TimelineItem }>(
+      `/api/owner/media/by-public/${encodeURIComponent(publicId)}`,
+    ),
   timeline: (cursor?: string | null) => {
     const q = new URLSearchParams({ limit: "60" });
     if (cursor) q.set("cursor", cursor);

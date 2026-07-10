@@ -13,6 +13,7 @@ import {
   putObject,
   presignPut,
 } from "../lib/r2";
+import { isPublicId, newPublicId } from "../lib/ids";
 
 async function optionalPresignPut(
   env: import("../types").Env,
@@ -24,6 +25,25 @@ async function optionalPresignPut(
     return null as string | null;
   }
   return presignPut(env, key, mime, byteSize);
+}
+
+function mapTimelineItem(row: Record<string, unknown>) {
+  const id = row.id as string;
+  const url = mediaContentUrl(id);
+  return {
+    id,
+    public_id: row.public_id as string,
+    type: row.type,
+    sort_at: row.sort_at,
+    taken_at: row.taken_at,
+    deleted_at: row.deleted_at,
+    width: row.width,
+    height: row.height,
+    caption: row.caption,
+    mime_type: row.mime_type,
+    thumb_url: url,
+    preview_url: url,
+  };
 }
 
 export const mediaRoutes = new Hono<{ Bindings: Env }>();
@@ -160,6 +180,7 @@ mediaRoutes.post("/upload-sessions", async (c) => {
   }
 
   const mediaId = crypto.randomUUID();
+  const publicId = newPublicId();
   const ext = extFromMime(mime);
   const key = originalKey(owner.archive.id, mediaId, ext);
   const takenAt = body.taken_at ? new Date(body.taken_at) : null;
@@ -171,12 +192,13 @@ mediaRoutes.post("/upload-sessions", async (c) => {
 
   await sql(c.env)`
     insert into media (
-      id, archive_id, uploaded_by, type, status,
+      id, public_id, archive_id, uploaded_by, type, status,
       taken_at, taken_at_source, sort_at,
       content_hash, byte_size, mime_type, width, height,
       r2_original_key, client_local_id
     ) values (
       ${mediaId},
+      ${publicId},
       ${owner.archive.id},
       ${owner.user.id},
       'photo',
@@ -198,6 +220,7 @@ mediaRoutes.post("/upload-sessions", async (c) => {
 
   return c.json({
     media_id: mediaId,
+    public_id: publicId,
     ...(uploadUrl ? { upload_url: uploadUrl } : {}),
     proxy_upload_url: `/api/owner/media/${mediaId}/content`,
     upload_headers: {
@@ -269,6 +292,7 @@ mediaRoutes.post("/upload-sessions/batch", async (c) => {
     }
 
     const mediaId = crypto.randomUUID();
+    const publicId = newPublicId();
     const ext = extFromMime(mime);
     const key = originalKey(owner.archive.id, mediaId, ext);
     const takenAt = item.taken_at ? new Date(item.taken_at) : null;
@@ -277,12 +301,13 @@ mediaRoutes.post("/upload-sessions/batch", async (c) => {
 
     await sql(c.env)`
       insert into media (
-        id, archive_id, uploaded_by, type, status,
+        id, public_id, archive_id, uploaded_by, type, status,
         taken_at, taken_at_source, sort_at,
         content_hash, byte_size, mime_type, width, height,
         r2_original_key, client_local_id
       ) values (
         ${mediaId},
+        ${publicId},
         ${owner.archive.id},
         ${owner.user.id},
         'photo',
@@ -303,6 +328,7 @@ mediaRoutes.post("/upload-sessions/batch", async (c) => {
     const uploadUrl = await optionalPresignPut(c.env, key, mime, byteSize);
     results.push({
       media_id: mediaId,
+      public_id: publicId,
       ...(uploadUrl ? { upload_url: uploadUrl } : {}),
       proxy_upload_url: `/api/owner/media/${mediaId}/content`,
       upload_headers: {
@@ -327,7 +353,7 @@ mediaRoutes.get("/timeline", async (c) => {
   if (cursor) {
     const [sortAt, id] = cursor.split("|");
     rows = await sql(c.env)`
-      select id, type, status, sort_at, mime_type, width, height, byte_size,
+      select id, public_id, type, status, sort_at, mime_type, width, height, byte_size,
              caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at, uploaded_at
       from media
       where archive_id = ${owner.archive.id}
@@ -339,7 +365,7 @@ mediaRoutes.get("/timeline", async (c) => {
     `;
   } else {
     rows = await sql(c.env)`
-      select id, type, status, sort_at, mime_type, width, height, byte_size,
+      select id, public_id, type, status, sort_at, mime_type, width, height, byte_size,
              caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at, uploaded_at
       from media
       where archive_id = ${owner.archive.id}
@@ -350,21 +376,7 @@ mediaRoutes.get("/timeline", async (c) => {
     `;
   }
 
-  const items = rows.map((row) => {
-    const url = mediaContentUrl(row.id as string);
-    return {
-      id: row.id,
-      type: row.type,
-      sort_at: row.sort_at,
-      taken_at: row.taken_at,
-      width: row.width,
-      height: row.height,
-      caption: row.caption,
-      mime_type: row.mime_type,
-      thumb_url: url,
-      preview_url: url,
-    };
-  });
+  const items = rows.map((row) => mapTimelineItem(row as Record<string, unknown>));
 
   const last = rows[rows.length - 1];
   const nextCursor =
@@ -386,7 +398,7 @@ mediaRoutes.get("/trash", async (c) => {
   if (cursor) {
     const [deletedAt, id] = cursor.split("|");
     rows = await sql(c.env)`
-      select id, type, status, sort_at, mime_type, width, height, byte_size,
+      select id, public_id, type, status, sort_at, mime_type, width, height, byte_size,
              caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at,
              uploaded_at, deleted_at
       from media
@@ -398,7 +410,7 @@ mediaRoutes.get("/trash", async (c) => {
     `;
   } else {
     rows = await sql(c.env)`
-      select id, type, status, sort_at, mime_type, width, height, byte_size,
+      select id, public_id, type, status, sort_at, mime_type, width, height, byte_size,
              caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at,
              uploaded_at, deleted_at
       from media
@@ -409,22 +421,7 @@ mediaRoutes.get("/trash", async (c) => {
     `;
   }
 
-  const items = rows.map((row) => {
-    const url = mediaContentUrl(row.id as string);
-    return {
-      id: row.id,
-      type: row.type,
-      sort_at: row.sort_at,
-      taken_at: row.taken_at,
-      deleted_at: row.deleted_at,
-      width: row.width,
-      height: row.height,
-      caption: row.caption,
-      mime_type: row.mime_type,
-      thumb_url: url,
-      preview_url: url,
-    };
-  });
+  const items = rows.map((row) => mapTimelineItem(row as Record<string, unknown>));
 
   const last = rows[rows.length - 1];
   const nextCursor =
@@ -433,6 +430,31 @@ mediaRoutes.get("/trash", async (c) => {
       : null;
 
   return c.json({ items, next_cursor: nextCursor });
+});
+
+/** Resolve a stable /photo/:publicId deep link. */
+mediaRoutes.get("/by-public/:publicId", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const publicId = c.req.param("publicId");
+  if (!isPublicId(publicId)) {
+    return c.json({ error: "invalid public id" }, 400);
+  }
+
+  const rows = await sql(c.env)`
+    select id, public_id, type, status, sort_at, mime_type, width, height, byte_size,
+           caption, r2_original_key, r2_thumb_key, r2_preview_key, taken_at,
+           uploaded_at, deleted_at
+    from media
+    where archive_id = ${owner.archive.id}
+      and public_id = ${publicId}
+      and status in ('ready', 'deleted')
+    limit 1
+  `;
+  if (!rows.length) return c.json({ error: "not found" }, 404);
+
+  return c.json({ item: mapTimelineItem(rows[0] as Record<string, unknown>) });
 });
 
 /** Soft-delete many items into Trash (recoverable until hard GC). */

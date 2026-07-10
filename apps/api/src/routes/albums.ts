@@ -191,7 +191,7 @@ albumRoutes.get("/:id/media", async (c) => {
     const [sortAt, mediaId] = cursor.split("|");
     rows = await sql(c.env)`
       select
-        m.id, m.type, m.status, m.sort_at, m.mime_type, m.width, m.height,
+        m.id, m.public_id, m.type, m.status, m.sort_at, m.mime_type, m.width, m.height,
         m.caption, m.r2_original_key, m.r2_thumb_key, m.r2_preview_key,
         m.taken_at, am.position
       from album_media am
@@ -206,7 +206,7 @@ albumRoutes.get("/:id/media", async (c) => {
   } else {
     rows = await sql(c.env)`
       select
-        m.id, m.type, m.status, m.sort_at, m.mime_type, m.width, m.height,
+        m.id, m.public_id, m.type, m.status, m.sort_at, m.mime_type, m.width, m.height,
         m.caption, m.r2_original_key, m.r2_thumb_key, m.r2_preview_key,
         m.taken_at, am.position
       from album_media am
@@ -223,6 +223,7 @@ albumRoutes.get("/:id/media", async (c) => {
     const url = mediaContentUrl(row.id as string);
     return {
       id: row.id as string,
+      public_id: row.public_id as string,
       type: row.type as string,
       sort_at: row.sort_at as string,
       taken_at: (row.taken_at as string | null) ?? null,
