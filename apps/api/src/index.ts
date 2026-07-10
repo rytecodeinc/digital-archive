@@ -25,10 +25,14 @@ app.get("/api/health", async (c) => {
   };
 
   if (c.req.query("db") === "1") {
+    body.hyperdrive = Boolean(c.env.HYPERDRIVE?.connectionString);
+    body.has_database_url = Boolean(c.env.DATABASE_URL);
     try {
-      if (!c.env.DATABASE_URL) {
+      if (!c.env.HYPERDRIVE?.connectionString && !c.env.DATABASE_URL) {
         body.database = "missing_DATABASE_URL";
         body.ok = false;
+        body.hint =
+          "Bind Cloudflare Hyperdrive as HYPERDRIVE (recommended) or set Worker secret DATABASE_URL.";
       } else {
         const { sql } = await import("./lib/db");
         await sql(c.env)`select 1 as ok`;
@@ -39,8 +43,14 @@ app.get("/api/health", async (c) => {
       body.database = "unreachable";
       body.database_error =
         err instanceof Error ? err.message : "unknown database error";
-      body.hint =
-        "Set Worker secret DATABASE_URL to the Supabase Session pooler URI (aws-...pooler.supabase.com:5432), not db.*.supabase.co.";
+      const message = String(body.database_error);
+      if (/too many subrequests/i.test(message)) {
+        body.hint =
+          "Direct Worker→Postgres is hitting the subrequest limit. Create a Hyperdrive config for Supabase (use the Direct connection string) and bind it to this Worker as HYPERDRIVE.";
+      } else {
+        body.hint =
+          "Prefer Hyperdrive. Or set DATABASE_URL to the Supabase Session pooler URI (aws-...pooler.supabase.com:5432), not db.*.supabase.co.";
+      }
     }
   }
 
@@ -56,12 +66,18 @@ app.onError((err, c) => {
   console.error(err);
   const message = err instanceof Error ? err.message : "unknown error";
   // Surface common Workers→Postgres connectivity failures clearly.
-  if (/cannot connect|proxy request failed|connect_timeout|ENOTFOUND|ECONNREFUSED/i.test(message)) {
+  if (
+    /cannot connect|proxy request failed|connect_timeout|ENOTFOUND|ECONNREFUSED|too many subrequests/i.test(
+      message,
+    )
+  ) {
     return c.json(
       {
         error: "database_unreachable",
         message,
-        hint: "Set DATABASE_URL to the Supabase Session pooler URI (aws-...pooler.supabase.com:5432), not the direct db.*.supabase.co host. URL-encode special characters in the password.",
+        hint: /too many subrequests/i.test(message)
+          ? "Create Cloudflare Hyperdrive for Supabase (Direct connection string) and bind it to Worker digital-archive as HYPERDRIVE."
+          : "Prefer Hyperdrive, or set DATABASE_URL to the Supabase Session pooler URI (aws-...pooler.supabase.com:5432).",
       },
       500,
     );
