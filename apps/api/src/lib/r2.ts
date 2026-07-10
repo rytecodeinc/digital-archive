@@ -8,12 +8,28 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { Env } from "../types";
 
+type R2ObjectLike = {
+  Body?: {
+    transformToByteArray(): Promise<Uint8Array>;
+  } | null;
+  ContentLength?: number;
+  ContentType?: string | null;
+};
+
+function hasS3Credentials(env: Env) {
+  return Boolean(env.R2_ACCESS_KEY_ID?.trim() && env.R2_SECRET_ACCESS_KEY?.trim());
+}
+
+function hasBucketBinding(env: Env) {
+  return Boolean(env.MEDIA_BUCKET);
+}
+
 export function r2Client(env: Env) {
   const accessKeyId = env.R2_ACCESS_KEY_ID?.trim();
   const secretAccessKey = env.R2_SECRET_ACCESS_KEY?.trim();
   if (!accessKeyId || !secretAccessKey) {
     throw new Error(
-      "Missing R2 credentials: set Worker secrets R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY",
+      "Missing R2 credentials: set Worker secrets R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY (local/dev), or bind MEDIA_BUCKET in wrangler.toml",
     );
   }
   return new S3Client({
@@ -36,21 +52,10 @@ export function originalKey(archiveId: string, mediaId: string, ext: string) {
   return `originals/${archiveId}/${yyyy}/${mm}/${mediaId}/original.${ext}`;
 }
 
-export async function presignPut(
-  env: Env,
-  key: string,
-  contentType: string,
-  _contentLength: number,
-) {
-  const client = r2Client(env);
-  // Sign only Content-Type. Browsers set Content-Length automatically; including it
-  // in SignedHeaders often causes signature mismatches from fetch().
-  const command = new PutObjectCommand({
-    Bucket: env.R2_BUCKET,
-    Key: key,
-    ContentType: contentType,
-  });
-  return getSignedUrl(client, command, { expiresIn: 15 * 60 });
+/** Same-origin URL for authenticated media viewing (no S3 presign / CORS). */
+export function mediaContentUrl(mediaId: string, opts?: { download?: boolean }) {
+  const q = opts?.download ? "?download=1" : "";
+  return `/api/owner/media/${mediaId}/content${q}`;
 }
 
 export async function putObject(
@@ -59,18 +64,30 @@ export async function putObject(
   body: ArrayBuffer | Uint8Array,
   contentType: string,
 ) {
+  const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+  if (hasBucketBinding(env)) {
+    await env.MEDIA_BUCKET!.put(key, bytes, {
+      httpMetadata: { contentType },
+    });
+    return;
+  }
   const client = r2Client(env);
   await client.send(
     new PutObjectCommand({
       Bucket: env.R2_BUCKET,
       Key: key,
-      Body: body instanceof Uint8Array ? body : new Uint8Array(body),
+      Body: bytes,
       ContentType: contentType,
     }),
   );
 }
 
 export async function headObject(env: Env, key: string) {
+  if (hasBucketBinding(env)) {
+    const obj = await env.MEDIA_BUCKET!.head(key);
+    if (!obj) throw new Error("object missing");
+    return { ContentLength: obj.size, ContentType: obj.httpMetadata?.contentType };
+  }
   const client = r2Client(env);
   return client.send(
     new HeadObjectCommand({
@@ -80,7 +97,18 @@ export async function headObject(env: Env, key: string) {
   );
 }
 
-export async function getObject(env: Env, key: string) {
+export async function getObject(env: Env, key: string): Promise<R2ObjectLike> {
+  if (hasBucketBinding(env)) {
+    const obj = await env.MEDIA_BUCKET!.get(key);
+    if (!obj) return { Body: null };
+    return {
+      ContentLength: obj.size,
+      ContentType: obj.httpMetadata?.contentType ?? null,
+      Body: {
+        transformToByteArray: async () => new Uint8Array(await obj.arrayBuffer()),
+      },
+    };
+  }
   const client = r2Client(env);
   return client.send(
     new GetObjectCommand({
@@ -91,6 +119,10 @@ export async function getObject(env: Env, key: string) {
 }
 
 export async function deleteObject(env: Env, key: string) {
+  if (hasBucketBinding(env)) {
+    await env.MEDIA_BUCKET!.delete(key);
+    return;
+  }
   const client = r2Client(env);
   await client.send(
     new DeleteObjectCommand({
@@ -100,13 +132,25 @@ export async function deleteObject(env: Env, key: string) {
   );
 }
 
-export async function presignGet(env: Env, key: string, expiresIn = 3600) {
+/** Optional: direct-to-R2 upload URL when S3 credentials are present. */
+export async function presignPut(
+  env: Env,
+  key: string,
+  contentType: string,
+  _contentLength: number,
+) {
+  if (!hasS3Credentials(env)) {
+    throw new Error(
+      "Direct R2 upload URLs require R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY; use proxy upload instead",
+    );
+  }
   const client = r2Client(env);
-  const command = new GetObjectCommand({
+  const command = new PutObjectCommand({
     Bucket: env.R2_BUCKET,
     Key: key,
+    ContentType: contentType,
   });
-  return getSignedUrl(client, command, { expiresIn });
+  return getSignedUrl(client, command, { expiresIn: 15 * 60 });
 }
 
 export function extFromMime(mime: string) {

@@ -22,6 +22,7 @@ app.get("/api/health", async (c) => {
     ok: true,
     service: "digital-archive-api",
     bucket: c.env.R2_BUCKET,
+    media_bucket: Boolean(c.env.MEDIA_BUCKET),
   };
 
   if (c.req.query("db") === "1") {

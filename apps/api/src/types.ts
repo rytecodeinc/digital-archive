@@ -7,10 +7,13 @@ export type Env = {
   DATABASE_URL?: string;
   /** Preferred on Cloudflare Workers — bind in dashboard or wrangler.toml. */
   HYPERDRIVE?: HyperdriveBinding;
+  /** Native R2 binding — preferred in production (no access-key secrets). */
+  MEDIA_BUCKET?: R2Bucket;
   R2_BUCKET: string;
   CF_ACCOUNT_ID: string;
-  R2_ACCESS_KEY_ID: string;
-  R2_SECRET_ACCESS_KEY: string;
+  /** Optional; only needed for local Node API / direct S3 presigns. */
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
   SESSION_SECRET: string;
   OWNER_EMAIL: string;
   /** Soft quota shown in the sidebar storage meter (default 15). */

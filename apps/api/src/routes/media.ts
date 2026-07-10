@@ -8,11 +8,23 @@ import {
   extFromMime,
   getObject,
   headObject,
+  mediaContentUrl,
   originalKey,
-  presignGet,
-  presignPut,
   putObject,
+  presignPut,
 } from "../lib/r2";
+
+async function optionalPresignPut(
+  env: import("../types").Env,
+  key: string,
+  mime: string,
+  byteSize: number,
+) {
+  if (!env.R2_ACCESS_KEY_ID?.trim() || !env.R2_SECRET_ACCESS_KEY?.trim()) {
+    return null as string | null;
+  }
+  return presignPut(env, key, mime, byteSize);
+}
 
 export const mediaRoutes = new Hono<{ Bindings: Env }>();
 
@@ -123,7 +135,7 @@ mediaRoutes.post("/upload-sessions", async (c) => {
           mime_type: string;
           byte_size: number;
         };
-        const uploadUrl = await presignPut(
+        const uploadUrl = await optionalPresignPut(
           c.env,
           row.r2_original_key,
           row.mime_type,
@@ -131,8 +143,8 @@ mediaRoutes.post("/upload-sessions", async (c) => {
         );
         return c.json({
           media_id: row.id,
-          upload_url: uploadUrl,
-          // Same-origin proxy avoids browser→R2 CORS issues until bucket CORS is configured.
+          ...(uploadUrl ? { upload_url: uploadUrl } : {}),
+          // Same-origin proxy avoids browser→R2 CORS and does not need S3 secrets.
           proxy_upload_url: `/api/owner/media/${row.id}/content`,
           upload_headers: {
             "Content-Type": row.mime_type,
@@ -182,11 +194,11 @@ mediaRoutes.post("/upload-sessions", async (c) => {
     )
   `;
 
-  const uploadUrl = await presignPut(c.env, key, mime, byteSize);
+  const uploadUrl = await optionalPresignPut(c.env, key, mime, byteSize);
 
   return c.json({
     media_id: mediaId,
-    upload_url: uploadUrl,
+    ...(uploadUrl ? { upload_url: uploadUrl } : {}),
     proxy_upload_url: `/api/owner/media/${mediaId}/content`,
     upload_headers: {
       "Content-Type": mime,
@@ -288,10 +300,10 @@ mediaRoutes.post("/upload-sessions/batch", async (c) => {
       )
     `;
 
-    const uploadUrl = await presignPut(c.env, key, mime, byteSize);
+    const uploadUrl = await optionalPresignPut(c.env, key, mime, byteSize);
     results.push({
       media_id: mediaId,
-      upload_url: uploadUrl,
+      ...(uploadUrl ? { upload_url: uploadUrl } : {}),
       proxy_upload_url: `/api/owner/media/${mediaId}/content`,
       upload_headers: {
         "Content-Type": mime,
@@ -338,24 +350,21 @@ mediaRoutes.get("/timeline", async (c) => {
     `;
   }
 
-  const items = await Promise.all(
-    rows.map(async (row) => {
-      const key = (row.r2_thumb_key || row.r2_preview_key || row.r2_original_key) as string;
-      const thumbUrl = await presignGet(c.env, key, 3600);
-      return {
-        id: row.id,
-        type: row.type,
-        sort_at: row.sort_at,
-        taken_at: row.taken_at,
-        width: row.width,
-        height: row.height,
-        caption: row.caption,
-        mime_type: row.mime_type,
-        thumb_url: thumbUrl,
-        preview_url: thumbUrl,
-      };
-    }),
-  );
+  const items = rows.map((row) => {
+    const url = mediaContentUrl(row.id as string);
+    return {
+      id: row.id,
+      type: row.type,
+      sort_at: row.sort_at,
+      taken_at: row.taken_at,
+      width: row.width,
+      height: row.height,
+      caption: row.caption,
+      mime_type: row.mime_type,
+      thumb_url: url,
+      preview_url: url,
+    };
+  });
 
   const last = rows[rows.length - 1];
   const nextCursor =
@@ -400,25 +409,22 @@ mediaRoutes.get("/trash", async (c) => {
     `;
   }
 
-  const items = await Promise.all(
-    rows.map(async (row) => {
-      const key = (row.r2_thumb_key || row.r2_preview_key || row.r2_original_key) as string;
-      const thumbUrl = await presignGet(c.env, key, 3600);
-      return {
-        id: row.id,
-        type: row.type,
-        sort_at: row.sort_at,
-        taken_at: row.taken_at,
-        deleted_at: row.deleted_at,
-        width: row.width,
-        height: row.height,
-        caption: row.caption,
-        mime_type: row.mime_type,
-        thumb_url: thumbUrl,
-        preview_url: thumbUrl,
-      };
-    }),
-  );
+  const items = rows.map((row) => {
+    const url = mediaContentUrl(row.id as string);
+    return {
+      id: row.id,
+      type: row.type,
+      sort_at: row.sort_at,
+      taken_at: row.taken_at,
+      deleted_at: row.deleted_at,
+      width: row.width,
+      height: row.height,
+      caption: row.caption,
+      mime_type: row.mime_type,
+      thumb_url: url,
+      preview_url: url,
+    };
+  });
 
   const last = rows[rows.length - 1];
   const nextCursor =
@@ -697,8 +703,7 @@ mediaRoutes.get("/:id/content", async (c) => {
     from media
     where id = ${id}
       and archive_id = ${owner.archive.id}
-      and deleted_at is null
-      and status = 'ready'
+      and status in ('ready', 'deleted')
     limit 1
   `;
   if (!rows.length) return c.json({ error: "not found" }, 404);

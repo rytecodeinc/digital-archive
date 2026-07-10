@@ -97,11 +97,13 @@ Set Worker secrets once (from a logged-in machine):
 ```bash
 cd apps/api
 npx wrangler secret put DATABASE_URL
-npx wrangler secret put R2_ACCESS_KEY_ID
-npx wrangler secret put R2_SECRET_ACCESS_KEY
 npx wrangler secret put SESSION_SECRET
+# Optional — only needed for local Node API / direct S3 presigns:
+# npx wrangler secret put R2_ACCESS_KEY_ID
+# npx wrangler secret put R2_SECRET_ACCESS_KEY
 ```
 
+Production media I/O uses the `MEDIA_BUCKET` R2 binding in `wrangler.toml` (no access-key secrets). `keep_vars = true` is set so Workers Builds does not wipe dashboard secrets on deploy.
 ## Cloudflare Pages (web UI)
 
 Build settings for the React app:

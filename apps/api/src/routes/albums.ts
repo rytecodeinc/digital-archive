@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { requireOwner } from "../lib/auth";
 import { sql } from "../lib/db";
-import { presignGet } from "../lib/r2";
+import { mediaContentUrl } from "../lib/r2";
 
 export const albumRoutes = new Hono<{ Bindings: Env }>();
 
@@ -18,13 +18,11 @@ function slugify(input: string) {
 }
 
 async function mapAlbumRow(
-  env: Env,
+  _env: Env,
   row: Record<string, unknown>,
 ) {
-  const coverKey = (row.r2_thumb_key ||
-    row.r2_preview_key ||
-    row.r2_original_key) as string | null;
-  const coverUrl = coverKey ? await presignGet(env, coverKey, 3600) : null;
+  const coverId = row.cover_media_id as string | null;
+  const coverUrl = coverId ? mediaContentUrl(coverId) : null;
   return {
     id: row.id as string,
     year: row.year as number,
@@ -221,27 +219,22 @@ albumRoutes.get("/:id/media", async (c) => {
     `;
   }
 
-  const items = await Promise.all(
-    rows.map(async (row) => {
-      const key = (row.r2_thumb_key ||
-        row.r2_preview_key ||
-        row.r2_original_key) as string;
-      const thumbUrl = await presignGet(c.env, key, 3600);
-      return {
-        id: row.id as string,
-        type: row.type as string,
-        sort_at: row.sort_at as string,
-        taken_at: (row.taken_at as string | null) ?? null,
-        width: (row.width as number | null) ?? null,
-        height: (row.height as number | null) ?? null,
-        caption: (row.caption as string | null) ?? null,
-        mime_type: row.mime_type as string,
-        thumb_url: thumbUrl,
-        preview_url: thumbUrl,
-        position: Number(row.position),
-      };
-    }),
-  );
+  const items = rows.map((row) => {
+    const url = mediaContentUrl(row.id as string);
+    return {
+      id: row.id as string,
+      type: row.type as string,
+      sort_at: row.sort_at as string,
+      taken_at: (row.taken_at as string | null) ?? null,
+      width: (row.width as number | null) ?? null,
+      height: (row.height as number | null) ?? null,
+      caption: (row.caption as string | null) ?? null,
+      mime_type: row.mime_type as string,
+      thumb_url: url,
+      preview_url: url,
+      position: Number(row.position),
+    };
+  });
 
   const last = rows[rows.length - 1];
   const nextCursor =

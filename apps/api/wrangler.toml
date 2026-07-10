@@ -3,18 +3,26 @@ main = "src/index.ts"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Keep dashboard-managed vars/secrets across Workers Builds deploys.
+keep_vars = true
+
 [vars]
 R2_BUCKET = "digital-archive-media"
 CF_ACCOUNT_ID = "75d07e9024b11886801cce0718edc814"
 OWNER_EMAIL = "rinarasia@icloud.com"
 STORAGE_QUOTA_GB = "15"
 
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "digital-archive-media"
+
 [[hyperdrive]]
 binding = "HYPERDRIVE"
 id = "9ddab8347d954db4bebe08ed5b56ad23"
 
-# Secrets (set via `wrangler secret put` or apps/api/.dev.vars for local):
+# Optional secrets (local Node API / direct S3 presigns only):
 # DATABASE_URL
 # R2_ACCESS_KEY_ID
 # R2_SECRET_ACCESS_KEY
 # SESSION_SECRET
+# Production media I/O uses MEDIA_BUCKET binding and does not need R2 access keys.
