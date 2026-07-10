@@ -33,6 +33,17 @@ function TrashIcon() {
   );
 }
 
+function RestoreIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.95 8.95 0 0 0 13 21a9 9 0 0 0 0-18z"
+      />
+    </svg>
+  );
+}
+
 function CloseIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
@@ -231,6 +242,32 @@ export function TimelinePage({
     }
   }
 
+  async function onRestoreSelected() {
+    if (!isTrash) return;
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+
+    setError(null);
+    try {
+      setStatus(
+        ids.length === 1
+          ? "Restoring photo…"
+          : `Restoring ${ids.length} photos…`,
+      );
+      const res = await api.batchRestoreMedia(ids);
+      const restored = new Set(res.restored_ids);
+      setItems((prev) => prev.filter((item) => !restored.has(item.id)));
+      setSelectedIds(new Set());
+      setStatus(
+        res.restored_count === 1
+          ? "Restored 1 photo to Photos"
+          : `Restored ${res.restored_count} photos to Photos`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to restore photos");
+    }
+  }
+
   async function onPurgeSelected() {
     if (!isTrash) return;
     const ids = [...selectedIds];
@@ -333,15 +370,26 @@ export function TimelinePage({
             </button>
           ) : null}
           {selectionActive && isTrash ? (
-            <button
-              className="icon-btn"
-              type="button"
-              aria-label="Permanently delete selected"
-              title="Delete forever"
-              onClick={() => void onPurgeSelected()}
-            >
-              <TrashIcon />
-            </button>
+            <>
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Restore selected to Photos"
+                title="Restore"
+                onClick={() => void onRestoreSelected()}
+              >
+                <RestoreIcon />
+              </button>
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Permanently delete selected"
+                title="Delete forever"
+                onClick={() => void onPurgeSelected()}
+              >
+                <TrashIcon />
+              </button>
+            </>
           ) : null}
         </>
       }

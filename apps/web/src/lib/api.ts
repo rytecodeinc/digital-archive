@@ -158,6 +158,14 @@ export const api = {
         body: JSON.stringify({ ids }),
       },
     ),
+  batchRestoreMedia: (ids: string[]) =>
+    request<{ ok: boolean; restored_count: number; restored_ids: string[] }>(
+      "/api/owner/media/batch-restore",
+      {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      },
+    ),
   albums: () => request<{ albums: AlbumSummary[] }>("/api/owner/albums"),
   createAlbum: (title: string) =>
     request<{ album: AlbumSummary }>("/api/owner/albums", {

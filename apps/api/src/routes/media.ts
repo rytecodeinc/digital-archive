@@ -422,6 +422,33 @@ mediaRoutes.post("/batch-delete", async (c) => {
   });
 });
 
+/** Restore soft-deleted items from Trash back into Photos. */
+mediaRoutes.post("/batch-restore", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+
+  const body = await c.req.json<{ ids?: string[] }>();
+  const ids = [...new Set((body.ids || []).filter((id) => typeof id === "string" && id))];
+  if (!ids.length) return c.json({ error: "ids required" }, 400);
+  if (ids.length > 200) return c.json({ error: "too many ids (max 200)" }, 400);
+
+  const db = sql(c.env);
+  const result = await db`
+    update media
+    set deleted_at = null, status = 'ready', updated_at = now()
+    where archive_id = ${owner.archive.id}
+      and deleted_at is not null
+      and id in ${db(ids)}
+    returning id
+  `;
+
+  return c.json({
+    ok: true,
+    restored_count: result.length,
+    restored_ids: result.map((row) => row.id as string),
+  });
+});
+
 /** Permanently delete soft-deleted items from Trash (DB + R2). */
 mediaRoutes.post("/batch-purge", async (c) => {
   const owner = await requireOwner(c);
