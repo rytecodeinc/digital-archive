@@ -149,17 +149,28 @@ browser must allow third-party cookies.
 Direct `DATABASE_URL` from a Worker often fails with **Too many subrequests** on the free plan. Use **Cloudflare Hyperdrive** (dashboard, no CLI):
 
 1. Supabase → **Project Settings** → **Database** → **Connection string** → **Direct connection**  
-   (Hyperdrive wants the direct host `db.<project>.supabase.co`, not the pooler.)
+   (Hyperdrive wants the direct host `db.<project>.supabase.co`, not the pooler. Choose **Public database** in Hyperdrive.)
 2. Cloudflare dashboard → **Hyperdrive** → **Create configuration**
 3. Name it e.g. `digital-archive-supabase`, paste the Direct connection string, create
 4. Copy the Hyperdrive **ID**
-5. Cloudflare → **Workers & Pages** → Worker **`digital-archive`** → **Settings** → **Bindings** → **Add** → **Hyperdrive**
-   - Variable name: `HYPERDRIVE`
-   - Hyperdrive config: the one you just created
-6. Save / deploy if prompted
+5. Put the ID in **both** `wrangler.toml` and `apps/api/wrangler.toml` (Workers Builds overwrites dashboard-only bindings on every deploy):
+
+```toml
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "<paste-hyperdrive-id-here>"
+```
+
+6. Also bind in the dashboard if you want (same name `HYPERDRIVE`), then **commit + push** so the next Workers Build keeps it
 7. Check: `https://digital-archive.rytecode.workers.dev/api/health?db=1`  
    Expect `"database":"ok"` and `"hyperdrive":true`
 
 Optional fallback (local / without Hyperdrive): Worker secret `DATABASE_URL` using the Supabase **Session pooler** URI (`aws-…pooler.supabase.com:5432`).
+
+### Pages production branch
+
+Set the Pages project **Production branch** to `main`. Until then, use the branch preview:
+
+`https://main.digital-archive-1lq.pages.dev`
 
 
