@@ -1,0 +1,5 @@
+DATABASE_URL=postgresql://postgres.sqtdpkvzeyckerxqfeic:YOUR_DB_PASSWORD@aws-1-us-west-2.pooler.supabase.com:5432/postgres
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+SESSION_SECRET=replace-with-long-random-string
+OWNER_PASSWORD=Admin8712!

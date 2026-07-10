@@ -1,0 +1,25 @@
+{
+  "name": "digital-archive",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @digital-archive/web & npm run dev -w @digital-archive/api",
+    "dev:api": "npm run dev -w @digital-archive/api",
+    "dev:web": "npm run dev -w @digital-archive/web",
+    "build": "npm run build -w @digital-archive/web",
+    "build:web": "npm run build -w @digital-archive/web",
+    "deploy:api": "npm run deploy -w @digital-archive/api",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/seed.mjs",
+    "typecheck": "npm run typecheck -w @digital-archive/api && npm run typecheck -w @digital-archive/web"
+  },
+  "devDependencies": {
+    "bcryptjs": "^3.0.2",
+    "pg": "^8.16.3",
+    "typescript": "^5.8.3"
+  }
+}

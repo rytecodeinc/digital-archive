@@ -1,0 +1,17 @@
+# Cloudflare Workers Builds runs from the monorepo root by default.
+# Keep this in sync with apps/api/wrangler.toml (local/dev still uses that file).
+name = "digital-archive"
+main = "apps/api/src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+R2_BUCKET = "digital-archive-media"
+CF_ACCOUNT_ID = "75d07e9024b11886801cce0718edc814"
+OWNER_EMAIL = "rinarasia@icloud.com"
+
+# Secrets (set via `wrangler secret put`):
+# DATABASE_URL
+# R2_ACCESS_KEY_ID
+# R2_SECRET_ACCESS_KEY
+# SESSION_SECRET

@@ -1,0 +1,5 @@
+{
+  "name": "@digital-archive/db",
+  "private": true,
+  "type": "module"
+}
