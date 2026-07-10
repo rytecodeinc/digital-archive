@@ -76,3 +76,41 @@ When you want direct-to-R2 uploads (better for large files), set bucket CORS in 
 ```
 
 Replace `*` with your real site origin once you have a stable domain. Your current Object Read & Write token cannot change CORS; use the dashboard or an Admin token.
+
+## Cloudflare Workers Builds (API)
+
+This is a monorepo. The Worker entrypoint is `apps/api/src/index.ts`.
+
+If Workers Builds runs from the **repo root**, keep the root `wrangler.toml` (already in the repo) and use:
+
+| Setting | Value |
+|---|---|
+| Root directory | `/` (repo root) |
+| Install command | `npm clean-install --progress=false` (default is fine) |
+| Build command | _(leave empty)_ |
+| Deploy command | `npx wrangler versions upload` |
+
+Alternatively, set **Root directory** to `apps/api` and keep deploy as `npx wrangler versions upload` (uses `apps/api/wrangler.toml`).
+
+Set Worker secrets once (from a logged-in machine):
+
+```bash
+cd apps/api
+npx wrangler secret put DATABASE_URL
+npx wrangler secret put R2_ACCESS_KEY_ID
+npx wrangler secret put R2_SECRET_ACCESS_KEY
+npx wrangler secret put SESSION_SECRET
+```
+
+## Cloudflare Pages (web UI)
+
+Build settings for the React app:
+
+| Setting | Value |
+|---|---|
+| Root directory | `/` (repo root) |
+| Build command | `npm run build -w @digital-archive/web` |
+| Build output directory | `apps/web/dist` |
+
+After Pages is live, proxy `/api/*` to the Worker (or configure the web app to call the Worker URL with CORS + cookie settings). Until then, login/upload from `*.pages.dev` will not hit the API.
+
