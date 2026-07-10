@@ -106,6 +106,18 @@ export function Lightbox({
           <button
             className="lightbox-icon-btn"
             type="button"
+            aria-label="Info"
+            title="Info"
+            disabled={busy !== null}
+            onClick={() => {
+              // Placeholder — photo info panel TBD.
+            }}
+          >
+            <InfoIcon />
+          </button>
+          <button
+            className="lightbox-icon-btn"
+            type="button"
             aria-label="Download"
             title="Download"
             disabled={busy !== null}
@@ -177,6 +189,17 @@ function CloseIcon() {
       <path
         fill="currentColor"
         d="M18.3 5.71 12 12.01 5.7 5.7 4.29 7.11 10.59 13.4 4.29 19.7 5.7 21.11 12 14.82 18.29 21.11 19.7 19.7 13.41 13.4 19.71 7.11z"
+      />
+    </svg>
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
       />
     </svg>
   );
