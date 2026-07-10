@@ -109,8 +109,23 @@ Build settings for the React app:
 | Setting | Value |
 |---|---|
 | Root directory | `/` (repo root) |
+| Framework preset | Vite |
 | Build command | `npm run build -w @digital-archive/web` |
 | Build output directory | `apps/web/dist` |
+| Production branch | your deploy branch (e.g. `main` or `cursor/phase1-archive-app-94d0`) |
 
-After Pages is live, proxy `/api/*` to the Worker (or configure the web app to call the Worker URL with CORS + cookie settings). Until then, login/upload from `*.pages.dev` will not hit the API.
+**Do not** put `DATABASE_URL` / R2 / `SESSION_SECRET` on Pages. Those belong on the Worker.
+
+### API proxy (required for login)
+
+The UI calls relative `/api/...` paths. Repo root `functions/api/[[path]].ts` proxies those to:
+
+`https://digital-archive.rytecode.workers.dev`
+
+After pushing, wait for Pages to redeploy, then hard-refresh `https://digital-archive-1lq.pages.dev` and try login again.
+
+Confirm Worker health first:
+
+`https://digital-archive.rytecode.workers.dev/api/health`
+
 
