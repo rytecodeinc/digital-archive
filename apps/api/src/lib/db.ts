@@ -25,17 +25,34 @@ export function normalizeDatabaseUrl(raw: string) {
   }
 }
 
+function connectionString(env: Env) {
+  // Prefer Hyperdrive when bound — required for reliable Postgres from Workers.
+  const hyperdrive = env.HYPERDRIVE?.connectionString;
+  if (hyperdrive) return hyperdrive;
+  if (!env.DATABASE_URL) {
+    throw new Error(
+      "No database binding: set Worker secret DATABASE_URL or bind Hyperdrive as HYPERDRIVE",
+    );
+  }
+  return normalizeDatabaseUrl(env.DATABASE_URL);
+}
+
 export function sql(env: Env) {
   let client = clients.get(env);
   if (!client) {
-    // Workers/local may sit behind TLS inspection; rejectUnauthorized:false
-    // still encrypts the connection. Prefer pooler URI in DATABASE_URL.
-    client = postgres(normalizeDatabaseUrl(env.DATABASE_URL), {
+    const viaHyperdrive = Boolean(env.HYPERDRIVE?.connectionString);
+    // Workers: keep a single connection, skip type OID fetch (extra round-trips /
+    // subrequests), and avoid custom SSL objects that can retry-storm.
+    client = postgres(connectionString(env), {
       prepare: false,
       max: 1,
+      fetch_types: false,
       idle_timeout: 20,
       connect_timeout: 10,
-      ssl: { rejectUnauthorized: false },
+      max_lifetime: 60 * 30,
+      // Hyperdrive terminates TLS to the origin; do not pass a custom ssl object.
+      // Direct DATABASE_URL still needs TLS to Supabase.
+      ...(viaHyperdrive ? {} : { ssl: "require" as const }),
     });
     clients.set(env, client);
   }

@@ -140,33 +140,22 @@ Optional override (Pages → Settings → Environment variables, then rebuild):
 
 Login cookies use `SameSite=None; Secure` when the request `Origin` is cross-site (Pages → Worker).
 
-### Worker `DATABASE_URL` (required for login)
+### Worker database (required for login)
 
-Login currently fails with:
+Direct `DATABASE_URL` from a Worker often fails with **Too many subrequests** on the free plan. Use **Cloudflare Hyperdrive** (dashboard, no CLI):
 
-`proxy request failed, cannot connect to the specified address`
+1. Supabase → **Project Settings** → **Database** → **Connection string** → **Direct connection**  
+   (Hyperdrive wants the direct host `db.<project>.supabase.co`, not the pooler.)
+2. Cloudflare dashboard → **Hyperdrive** → **Create configuration**
+3. Name it e.g. `digital-archive-supabase`, paste the Direct connection string, create
+4. Copy the Hyperdrive **ID**
+5. Cloudflare → **Workers & Pages** → Worker **`digital-archive`** → **Settings** → **Bindings** → **Add** → **Hyperdrive**
+   - Variable name: `HYPERDRIVE`
+   - Hyperdrive config: the one you just created
+6. Save / deploy if prompted
+7. Check: `https://digital-archive.rytecode.workers.dev/api/health?db=1`  
+   Expect `"database":"ok"` and `"hyperdrive":true`
 
-That means the Worker cannot open Postgres. Fix the Worker secret:
-
-1. In Supabase → Project Settings → Database → **Connection string** → **Session pooler**
-2. Use host like `aws-1-us-west-2.pooler.supabase.com` and port `5432`
-3. **Do not** use `db.<project>.supabase.co` (often IPv6-only; Workers cannot connect)
-4. URL-encode special characters in the password (`!` → `%21`)
-5. Update the secret:
-
-```bash
-cd apps/api
-npx wrangler secret put DATABASE_URL
-```
-
-Example shape:
-
-```text
-postgresql://postgres.sqtdpkvzeyckerxqfeic:[URL-ENCODED-PASSWORD]@aws-1-us-west-2.pooler.supabase.com:5432/postgres
-```
-
-After updating, redeploy/promote the Worker (or wait for the next Workers Build), then test:
-
-`POST https://digital-archive.rytecode.workers.dev/api/auth/login`
+Optional fallback (local / without Hyperdrive): Worker secret `DATABASE_URL` using the Supabase **Session pooler** URI (`aws-…pooler.supabase.com:5432`).
 
 

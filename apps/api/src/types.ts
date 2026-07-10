@@ -1,5 +1,12 @@
+export type HyperdriveBinding = {
+  connectionString: string;
+};
+
 export type Env = {
-  DATABASE_URL: string;
+  /** Optional when Hyperdrive is bound; still used for local Node API. */
+  DATABASE_URL?: string;
+  /** Preferred on Cloudflare Workers — bind in dashboard or wrangler.toml. */
+  HYPERDRIVE?: HyperdriveBinding;
   R2_BUCKET: string;
   CF_ACCOUNT_ID: string;
   R2_ACCESS_KEY_ID: string;

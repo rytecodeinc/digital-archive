@@ -10,6 +10,15 @@ R2_BUCKET = "digital-archive-media"
 CF_ACCOUNT_ID = "75d07e9024b11886801cce0718edc814"
 OWNER_EMAIL = "rinarasia@icloud.com"
 
+# Free plan max is 50; keep explicit so Workers Builds does not use a lower legacy default.
+[limits]
+subrequests = 50
+
+# After creating Hyperdrive in the Cloudflare dashboard, uncomment and set the id:
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "<hyperdrive-config-id>"
+
 # Secrets (set via `wrangler secret put`):
 # DATABASE_URL
 # R2_ACCESS_KEY_ID
