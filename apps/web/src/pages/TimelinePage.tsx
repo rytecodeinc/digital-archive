@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   api,
   readImageDimensions,
   sha256Hex,
+  type AlbumSummary,
   type TimelineItem,
   type User,
 } from "../lib/api";
@@ -44,6 +46,17 @@ function RestoreIcon() {
   );
 }
 
+function AddToAlbumIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9h-4v4h-2v-4H9V9h4V5h2v4h4v2z"
+      />
+    </svg>
+  );
+}
+
 function CloseIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
@@ -72,6 +85,10 @@ export function TimelinePage({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [choosingAlbum, setChoosingAlbum] = useState(false);
+  const [albumChoices, setAlbumChoices] = useState<AlbumSummary[]>([]);
+  const [albumsLoading, setAlbumsLoading] = useState(false);
+  const [addingToAlbumId, setAddingToAlbumId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const getDate = useMemo(
@@ -111,12 +128,70 @@ export function TimelinePage({
     setStatus(null);
     setError(null);
     setSelectedIds(new Set());
+    setChoosingAlbum(false);
+    setAlbumChoices([]);
+    setAddingToAlbumId(null);
     void load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
   function clearSelection() {
     setSelectedIds(new Set());
+    setChoosingAlbum(false);
+    setAlbumChoices([]);
+    setAddingToAlbumId(null);
+  }
+
+  async function startChoosingAlbum() {
+    if (isTrash || !selectedCount) return;
+    setChoosingAlbum(true);
+    setError(null);
+    setStatus(null);
+    setAlbumsLoading(true);
+    try {
+      const res = await api.albums();
+      setAlbumChoices(res.albums);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load albums");
+      setChoosingAlbum(false);
+    } finally {
+      setAlbumsLoading(false);
+    }
+  }
+
+  function cancelChoosingAlbum() {
+    if (addingToAlbumId) return;
+    setChoosingAlbum(false);
+    setAlbumChoices([]);
+    setStatus(null);
+  }
+
+  async function addSelectedToAlbum(target: AlbumSummary) {
+    if (!selectedCount || addingToAlbumId) return;
+    setAddingToAlbumId(target.id);
+    setError(null);
+    try {
+      setStatus(
+        selectedCount === 1
+          ? `Adding 1 photo to “${target.title}”…`
+          : `Adding ${selectedCount} photos to “${target.title}”…`,
+      );
+      const res = await api.addAlbumMedia(target.id, [...selectedIds]);
+      setChoosingAlbum(false);
+      setAlbumChoices([]);
+      setSelectedIds(new Set());
+      setStatus(
+        res.added_count === 0
+          ? `Selected photos were already in “${target.title}”`
+          : res.added_count === 1
+            ? `Added 1 photo to “${target.title}”`
+            : `Added ${res.added_count} photos to “${target.title}”`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add photos");
+    } finally {
+      setAddingToAlbumId(null);
+    }
   }
 
   async function onFilesSelected(fileList: FileList | null) {
@@ -309,18 +384,27 @@ export function TimelinePage({
       onLogout={onLogout}
       heading={
         <>
-          {selectionActive ? (
+          {selectionActive || choosingAlbum ? (
             <div className="selection-heading">
               <button
                 className="selection-clear"
                 type="button"
-                aria-label="Clear selection"
-                title="Clear selection"
-                onClick={clearSelection}
+                aria-label={
+                  choosingAlbum ? "Cancel choosing album" : "Clear selection"
+                }
+                title={choosingAlbum ? "Cancel" : "Clear selection"}
+                disabled={!!addingToAlbumId}
+                onClick={choosingAlbum ? cancelChoosingAlbum : clearSelection}
               >
                 <CloseIcon />
               </button>
-              <h1 className="selection-count">{selectedCount} Selected</h1>
+              <h1 className="selection-count">
+                {choosingAlbum
+                  ? selectedCount === 1
+                    ? "Add 1 photo to…"
+                    : `Add ${selectedCount} photos to…`
+                  : `${selectedCount} Selected`}
+              </h1>
             </div>
           ) : (
             <h1 className="page-heading">{isTrash ? "Trash" : "Photos"}</h1>
@@ -337,64 +421,123 @@ export function TimelinePage({
         </>
       }
       actions={
-        <>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,.heic,.heif"
-            multiple
-            hidden
-            onChange={(e) => void onFilesSelected(e.target.files)}
-          />
-          {!isTrash ? (
-            <button
-              className="icon-btn"
-              type="button"
-              aria-label={uploading ? "Uploading" : "Upload photos"}
-              title={uploading ? "Uploading…" : "Upload photos"}
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-            >
-              <UploadIcon />
-            </button>
-          ) : null}
-          {selectionActive && !isTrash ? (
-            <button
-              className="icon-btn"
-              type="button"
-              aria-label="Move selected to Trash"
-              title="Move to Trash"
-              onClick={() => void onDeleteSelected()}
-            >
-              <TrashIcon />
-            </button>
-          ) : null}
-          {selectionActive && isTrash ? (
-            <>
+        choosingAlbum ? null : (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,.heic,.heif"
+              multiple
+              hidden
+              onChange={(e) => void onFilesSelected(e.target.files)}
+            />
+            {!isTrash && !selectionActive ? (
               <button
                 className="icon-btn"
                 type="button"
-                aria-label="Restore selected to Photos"
-                title="Restore"
-                onClick={() => void onRestoreSelected()}
+                aria-label={uploading ? "Uploading" : "Upload photos"}
+                title={uploading ? "Uploading…" : "Upload photos"}
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
               >
-                <RestoreIcon />
+                <UploadIcon />
               </button>
-              <button
-                className="icon-btn"
-                type="button"
-                aria-label="Permanently delete selected"
-                title="Delete forever"
-                onClick={() => void onPurgeSelected()}
-              >
-                <TrashIcon />
-              </button>
-            </>
-          ) : null}
-        </>
+            ) : null}
+            {selectionActive && !isTrash ? (
+              <>
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Add selected photos to album"
+                  title="Add to album"
+                  disabled={!!addingToAlbumId}
+                  onClick={() => void startChoosingAlbum()}
+                >
+                  <AddToAlbumIcon />
+                </button>
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Move selected to Trash"
+                  title="Move to Trash"
+                  onClick={() => void onDeleteSelected()}
+                >
+                  <TrashIcon />
+                </button>
+              </>
+            ) : null}
+            {selectionActive && isTrash ? (
+              <>
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Restore selected to Photos"
+                  title="Restore"
+                  onClick={() => void onRestoreSelected()}
+                >
+                  <RestoreIcon />
+                </button>
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Permanently delete selected"
+                  title="Delete forever"
+                  onClick={() => void onPurgeSelected()}
+                >
+                  <TrashIcon />
+                </button>
+              </>
+            ) : null}
+          </>
+        )
       }
     >
-      {loading ? (
+      {choosingAlbum ? (
+        albumsLoading ? (
+          <p className="muted content-status">Loading albums…</p>
+        ) : albumChoices.length === 0 ? (
+          <div className="empty">
+            <h2>No albums yet</h2>
+            <p className="muted">
+              Create an album first, then you can add these photos to it.
+            </p>
+            <Link className="btn secondary" to="/albums">
+              Go to Albums
+            </Link>
+          </div>
+        ) : (
+          <div className="albums-grid">
+            {albumChoices.map((choice) => (
+              <button
+                className="album-tile album-tile-button"
+                type="button"
+                disabled={!!addingToAlbumId}
+                aria-label={`Add selected photos to ${choice.title}`}
+                onClick={() => void addSelectedToAlbum(choice)}
+                key={choice.id}
+              >
+                <div className="album-cover">
+                  {choice.cover_url ? (
+                    <img src={choice.cover_url} alt="" />
+                  ) : (
+                    <div className="album-cover-empty" aria-hidden="true" />
+                  )}
+                </div>
+                <h2 className="album-title">{choice.title}</h2>
+                <p className="muted album-meta">
+                  {choice.year}
+                  {choice.media_count
+                    ? ` · ${choice.media_count} item${
+                        choice.media_count === 1 ? "" : "s"
+                      }`
+                    : ""}
+                  {addingToAlbumId === choice.id ? " · Adding…" : ""}
+                </p>
+              </button>
+            ))}
+          </div>
+        )
+      ) : loading ? (
         <p className="muted content-status">
           {isTrash ? "Loading trash…" : "Loading timeline…"}
         </p>
