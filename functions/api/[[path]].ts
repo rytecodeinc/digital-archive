@@ -2,10 +2,7 @@ const WORKER_ORIGIN = "https://digital-archive.rytecode.workers.dev";
 
 /**
  * Proxy /api/* from Pages (same origin) to the API Worker so session cookies
- * stay on *.pages.dev when Functions are enabled.
- *
- * Prefer VITE_API_BASE_URL / production default pointing at the Worker when
- * Pages Functions are not active for this project.
+ * stay on *.pages.dev.
  */
 export const onRequest: PagesFunction = async (context) => {
   const incoming = new URL(context.request.url);
@@ -16,6 +13,9 @@ export const onRequest: PagesFunction = async (context) => {
 
   const headers = new Headers(context.request.headers);
   headers.delete("host");
+  // Tell the Worker this is a same-origin Pages proxy so cookies can be Lax.
+  headers.set("X-Forwarded-Host", incoming.host);
+  headers.set("X-Forwarded-Proto", incoming.protocol.replace(":", ""));
 
   try {
     const init: RequestInit = {
@@ -30,10 +30,27 @@ export const onRequest: PagesFunction = async (context) => {
     }
 
     const upstream = await fetch(target.toString(), init);
+    const responseHeaders = new Headers(upstream.headers);
+
+    // Rewrite Set-Cookie for the Pages host: drop Domain, prefer SameSite=Lax.
+    const rawCookies =
+      typeof upstream.headers.getSetCookie === "function"
+        ? upstream.headers.getSetCookie()
+        : [];
+    if (rawCookies.length) {
+      responseHeaders.delete("set-cookie");
+      for (const cookie of rawCookies) {
+        const rewritten = cookie
+          .replace(/;\s*Domain=[^;]*/gi, "")
+          .replace(/;\s*SameSite=None/gi, "; SameSite=Lax");
+        responseHeaders.append("set-cookie", rewritten);
+      }
+    }
+
     return new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
-      headers: new Headers(upstream.headers),
+      headers: responseHeaders,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "proxy_failed";

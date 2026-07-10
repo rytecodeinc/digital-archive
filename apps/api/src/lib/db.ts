@@ -1,8 +1,6 @@
 import postgres from "postgres";
 import type { Env } from "../types";
 
-const clients = new WeakMap<object, ReturnType<typeof postgres>>();
-
 /** Ensure password special characters are percent-encoded for postgres.js / Workers. */
 export function normalizeDatabaseUrl(raw: string) {
   const trimmed = raw.trim();
@@ -37,26 +35,25 @@ function connectionString(env: Env) {
   return normalizeDatabaseUrl(env.DATABASE_URL);
 }
 
+/**
+ * Create a postgres.js client for this request.
+ *
+ * Do not cache across requests on Workers: Hyperdrive sockets are request-scoped
+ * and reuse throws "Cannot perform I/O on behalf of a different request".
+ */
 export function sql(env: Env) {
-  let client = clients.get(env);
-  if (!client) {
-    const viaHyperdrive = Boolean(env.HYPERDRIVE?.connectionString);
-    // Workers: keep a single connection, skip type OID fetch (extra round-trips /
-    // subrequests), and avoid custom SSL objects that can retry-storm.
-    client = postgres(connectionString(env), {
-      prepare: false,
-      max: 1,
-      fetch_types: false,
-      idle_timeout: 20,
-      connect_timeout: 10,
-      max_lifetime: 60 * 30,
-      // Workers free plan: 50 subrequests. Aggressive reconnects burn that budget.
-      backoff: false,
-      // Hyperdrive terminates TLS to the origin; do not pass a custom ssl object.
-      // Direct DATABASE_URL still needs TLS to Supabase.
-      ...(viaHyperdrive ? {} : { ssl: "require" as const }),
-    });
-    clients.set(env, client);
-  }
-  return client;
+  const viaHyperdrive = Boolean(env.HYPERDRIVE?.connectionString);
+  return postgres(connectionString(env), {
+    prepare: false,
+    max: 1,
+    fetch_types: false,
+    idle_timeout: 5,
+    connect_timeout: 10,
+    max_lifetime: 60 * 5,
+    // Workers free plan: 50 subrequests. Aggressive reconnects burn that budget.
+    backoff: false,
+    // Hyperdrive terminates TLS to the origin; do not pass a custom ssl object.
+    // Direct DATABASE_URL still needs TLS to Supabase.
+    ...(viaHyperdrive ? {} : { ssl: "require" as const }),
+  });
 }

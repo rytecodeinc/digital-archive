@@ -130,15 +130,19 @@ Confirm Worker health first:
 
 ### Pages → API (current production setup)
 
-Production builds default `VITE_API_BASE_URL` to `https://digital-archive.rytecode.workers.dev` so the UI talks to the Worker even when the Pages `/api` Function is inactive (405).
+The web app calls **same-origin** `/api/...`. Cloudflare Pages Function
+`functions/api/[[path]].ts` proxies those to the Worker so the session cookie
+stays on `*.pages.dev` (avoids browsers blocking cross-site cookies on
+`workers.dev`).
 
-Optional override (Pages → Settings → Environment variables, then rebuild):
+Optional override (only if you intentionally call the Worker directly):
 
 | Pages env var | Value |
 |---|---|
 | `VITE_API_BASE_URL` | `https://digital-archive.rytecode.workers.dev` |
 
-Login cookies use `SameSite=None; Secure` when the request `Origin` is cross-site (Pages → Worker).
+If you use the override, login cookies need `SameSite=None; Secure` and the
+browser must allow third-party cookies.
 
 ### Worker database (required for login)
 

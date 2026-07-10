@@ -36,12 +36,9 @@ export type AlbumSummary = {
   cover_url: string | null;
 };
 
-// Production Pages often cannot rely on Functions proxying /api; call the Worker
-// directly. Override with VITE_API_BASE_URL at build time if needed.
-const API_BASE = (
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD ? "https://digital-archive.rytecode.workers.dev" : "")
-).replace(/\/$/, "");
+// Same-origin `/api` by default so session cookies stay on the Pages host.
+// Override with VITE_API_BASE_URL only if you intentionally call the Worker directly.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 function apiUrl(path: string) {
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
