@@ -37,11 +37,14 @@ export async function createSession(c: Context<{ Bindings: Env }>, userId: strin
 
   const secure = new URL(c.req.url).protocol === "https:";
   const origin = c.req.header("Origin");
+  const forwardedHost = c.req.header("X-Forwarded-Host");
   let sameSite: "Lax" | "None" = "Lax";
-  if (origin) {
+  // Pages Function proxy sets X-Forwarded-Host to the Pages hostname — keep Lax
+  // so the cookie is first-party on *.pages.dev.
+  if (!forwardedHost && origin) {
     try {
       if (new URL(origin).host !== new URL(c.req.url).host) {
-        // Pages (pages.dev) calling Worker (workers.dev) is cross-site.
+        // Direct browser → Worker (workers.dev) is cross-site.
         sameSite = "None";
       }
     } catch {

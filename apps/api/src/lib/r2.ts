@@ -9,12 +9,19 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { Env } from "../types";
 
 export function r2Client(env: Env) {
+  const accessKeyId = env.R2_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = env.R2_SECRET_ACCESS_KEY?.trim();
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error(
+      "Missing R2 credentials: set Worker secrets R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY",
+    );
+  }
   return new S3Client({
     region: "auto",
     endpoint: `https://${env.CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId: env.R2_ACCESS_KEY_ID,
-      secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+      accessKeyId,
+      secretAccessKey,
     },
     // Prevent AWS SDK v3 from injecting checksum query params that browsers omit.
     requestChecksumCalculation: "WHEN_REQUIRED",
