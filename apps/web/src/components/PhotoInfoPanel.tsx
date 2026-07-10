@@ -38,12 +38,6 @@ export function PhotoInfoPanel({
 
         {!loading && !error && info ? (
           <>
-            <div className="photo-info-description">
-              {info.caption || info.description || (
-                <span className="photo-info-placeholder">Add a description</span>
-              )}
-            </div>
-
             <h3 className="photo-info-section-label">Details</h3>
             <ul className="photo-info-list">
               {info.taken_at || info.uploaded_at ? (
