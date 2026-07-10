@@ -10,10 +10,9 @@ R2_BUCKET = "digital-archive-media"
 CF_ACCOUNT_ID = "75d07e9024b11886801cce0718edc814"
 OWNER_EMAIL = "rinarasia@icloud.com"
 
-# After creating Hyperdrive in the Cloudflare dashboard, uncomment and set the id:
-# [[hyperdrive]]
-# binding = "HYPERDRIVE"
-# id = "<hyperdrive-config-id>"
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "9ddab8347d954db4bebe08ed5b56ad23"
 
 # Secrets (set via `wrangler secret put`):
 # DATABASE_URL
