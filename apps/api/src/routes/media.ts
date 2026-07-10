@@ -14,6 +14,7 @@ import {
   presignPut,
 } from "../lib/r2";
 import { isPublicId, newPublicId } from "../lib/ids";
+import { buildMediaInfo, parseExifFromBytes } from "../lib/mediaInfo";
 
 async function optionalPresignPut(
   env: import("../types").Env,
@@ -674,6 +675,108 @@ mediaRoutes.post("/:id/complete", async (c) => {
   `;
 
   return c.json({ media_id: id, status: "ready" });
+});
+
+/** Photo info panel metadata (DB fields + EXIF from original when available). */
+mediaRoutes.get("/:id/info", async (c) => {
+  const owner = await requireOwner(c);
+  if (owner instanceof Response) return owner;
+  const id = c.req.param("id");
+  const db = sql(c.env);
+
+  const rows = await db`
+    select id, caption, alt_text, taken_at, taken_at_source, uploaded_at,
+           width, height, byte_size, mime_type, location_name, latitude, longitude,
+           exif_json, client_local_id, r2_original_key
+    from media
+    where id = ${id}
+      and archive_id = ${owner.archive.id}
+      and status in ('ready', 'deleted')
+    limit 1
+  `;
+  if (!rows.length) return c.json({ error: "not found" }, 404);
+
+  const media = rows[0] as {
+    id: string;
+    caption: string | null;
+    alt_text: string | null;
+    taken_at: string | null;
+    taken_at_source: string | null;
+    uploaded_at: string;
+    width: number | null;
+    height: number | null;
+    byte_size: number | null;
+    mime_type: string;
+    location_name: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    exif_json: Record<string, unknown> | string | null;
+    client_local_id: string | null;
+    r2_original_key: string;
+  };
+
+  let exif: Record<string, unknown> | null = null;
+  if (typeof media.exif_json === "string") {
+    try {
+      exif = JSON.parse(media.exif_json) as Record<string, unknown>;
+    } catch {
+      exif = null;
+    }
+  } else if (media.exif_json && typeof media.exif_json === "object") {
+    exif = media.exif_json;
+  }
+
+  if (!exif || Object.keys(exif).length === 0) {
+    try {
+      const object = await getObject(c.env, media.r2_original_key);
+      if (object.Body) {
+        const bytes = await object.Body.transformToByteArray();
+        exif = await parseExifFromBytes(bytes);
+        if (exif) {
+          const lat = typeof exif.latitude === "number" ? exif.latitude : null;
+          const lng = typeof exif.longitude === "number" ? exif.longitude : null;
+          await db`
+            update media
+            set exif_json = ${JSON.stringify(exif)}::jsonb,
+                latitude = coalesce(latitude, ${lat}),
+                longitude = coalesce(longitude, ${lng}),
+                updated_at = now()
+            where id = ${id}
+          `;
+        }
+      }
+    } catch {
+      exif = null;
+    }
+  }
+
+  const ext = media.r2_original_key.includes(".")
+    ? media.r2_original_key.slice(media.r2_original_key.lastIndexOf(".") + 1)
+    : "bin";
+  const stamp = new Date(media.taken_at || media.uploaded_at)
+    .toISOString()
+    .slice(0, 10);
+  const filename = `archive-${stamp}-${media.id.slice(0, 8)}.${ext}`;
+
+  const info = buildMediaInfo({
+    caption: media.caption,
+    alt_text: media.alt_text,
+    taken_at: media.taken_at,
+    taken_at_source: media.taken_at_source,
+    uploaded_at: media.uploaded_at,
+    width: media.width,
+    height: media.height,
+    byte_size: media.byte_size != null ? Number(media.byte_size) : null,
+    mime_type: media.mime_type,
+    filename,
+    location_name: media.location_name,
+    latitude: media.latitude,
+    longitude: media.longitude,
+    client_local_id: media.client_local_id,
+    exif,
+  });
+
+  return c.json({ info });
 });
 
 mediaRoutes.get("/:id/download", async (c) => {

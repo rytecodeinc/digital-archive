@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type TimelineItem } from "../lib/api";
+import { api, type MediaInfo, type TimelineItem } from "../lib/api";
+import { PhotoInfoPanel } from "./PhotoInfoPanel";
 
 export function Lightbox({
   items,
@@ -20,6 +21,11 @@ export function Lightbox({
   const closeRef = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState<"download" | "delete" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [info, setInfo] = useState<MediaInfo | null>(null);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoError, setInfoError] = useState<string | null>(null);
+  const infoCacheRef = useRef<Map<string, MediaInfo>>(new Map());
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -29,7 +35,13 @@ export function Lightbox({
 
     function onKey(e: KeyboardEvent) {
       if (busy) return;
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (infoOpen) {
+          setInfoOpen(false);
+          return;
+        }
+        onClose();
+      }
       if (e.key === "ArrowLeft") onNavigate(Math.max(0, index - 1));
       if (e.key === "ArrowRight") onNavigate(Math.min(items.length - 1, index + 1));
     }
@@ -39,7 +51,43 @@ export function Lightbox({
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKey);
     };
-  }, [busy, index, items.length, onClose, onNavigate]);
+  }, [busy, index, infoOpen, items.length, onClose, onNavigate]);
+
+  useEffect(() => {
+    if (!item || !infoOpen) return;
+
+    const cached = infoCacheRef.current.get(item.id);
+    if (cached) {
+      setInfo(cached);
+      setInfoError(null);
+      setInfoLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setInfo(null);
+    setInfoLoading(true);
+    setInfoError(null);
+
+    void api
+      .mediaInfo(item.id)
+      .then(({ info: next }) => {
+        if (cancelled) return;
+        infoCacheRef.current.set(item.id, next);
+        setInfo(next);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setInfoError(err instanceof Error ? err.message : "Failed to load info");
+      })
+      .finally(() => {
+        if (!cancelled) setInfoLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [infoOpen, item?.id]);
 
   if (!item) return null;
 
@@ -85,7 +133,7 @@ export function Lightbox({
 
   return (
     <div
-      className="lightbox"
+      className={`lightbox${infoOpen ? " lightbox-info-open" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label={item.caption || "Photo viewer"}
@@ -104,14 +152,13 @@ export function Lightbox({
 
         <div className="lightbox-topbar-actions">
           <button
-            className="lightbox-icon-btn"
+            className={`lightbox-icon-btn${infoOpen ? " is-active" : ""}`}
             type="button"
             aria-label="Info"
+            aria-pressed={infoOpen}
             title="Info"
             disabled={busy !== null}
-            onClick={() => {
-              // Placeholder — photo info panel TBD.
-            }}
+            onClick={() => setInfoOpen((open) => !open)}
           >
             <InfoIcon />
           </button>
@@ -140,44 +187,54 @@ export function Lightbox({
         </div>
       </header>
 
-      <div className="lightbox-chrome" onClick={(e) => e.stopPropagation()}>
-        {hasPrev ? (
-          <button
-            className="lightbox-nav lightbox-prev"
-            type="button"
-            aria-label="Previous photo"
-            disabled={busy !== null}
-            onClick={() => onNavigate(index - 1)}
-          >
-            ‹
-          </button>
-        ) : null}
+      <div className="lightbox-stage">
+        <div className="lightbox-chrome" onClick={(e) => e.stopPropagation()}>
+          {hasPrev ? (
+            <button
+              className="lightbox-nav lightbox-prev"
+              type="button"
+              aria-label="Previous photo"
+              disabled={busy !== null}
+              onClick={() => onNavigate(index - 1)}
+            >
+              ‹
+            </button>
+          ) : null}
 
-        {hasNext ? (
-          <button
-            className="lightbox-nav lightbox-next"
-            type="button"
-            aria-label="Next photo"
-            disabled={busy !== null}
-            onClick={() => onNavigate(index + 1)}
-          >
-            ›
-          </button>
-        ) : null}
+          {hasNext ? (
+            <button
+              className="lightbox-nav lightbox-next"
+              type="button"
+              aria-label="Next photo"
+              disabled={busy !== null}
+              onClick={() => onNavigate(index + 1)}
+            >
+              ›
+            </button>
+          ) : null}
 
-        <figure className="lightbox-figure">
-          <img src={src} alt={item.caption || "Archive photo"} />
-          {item.caption ? <figcaption>{item.caption}</figcaption> : null}
-        </figure>
+          <figure className="lightbox-figure">
+            <img src={src} alt={item.caption || "Archive photo"} />
+            {item.caption ? <figcaption>{item.caption}</figcaption> : null}
+          </figure>
 
-        <div className="lightbox-meta">
-          {busy === "download"
-            ? "Downloading…"
-            : busy === "delete"
-              ? "Deleting…"
-              : `${index + 1} / ${items.length}`}
+          <div className="lightbox-meta">
+            {busy === "download"
+              ? "Downloading…"
+              : busy === "delete"
+                ? "Deleting…"
+                : `${index + 1} / ${items.length}`}
+          </div>
+          {actionError ? <p className="lightbox-error">{actionError}</p> : null}
         </div>
-        {actionError ? <p className="lightbox-error">{actionError}</p> : null}
+
+        <PhotoInfoPanel
+          open={infoOpen}
+          info={info}
+          loading={infoLoading}
+          error={infoError}
+          onClose={() => setInfoOpen(false)}
+        />
       </div>
     </div>
   );

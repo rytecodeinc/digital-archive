@@ -1,4 +1,24 @@
-const WORKER_ORIGIN = "https://digital-archive.rytecode.workers.dev";
+const PROD_WORKER_ORIGIN = "https://digital-archive.rytecode.workers.dev";
+const WORKER_NAME = "digital-archive";
+const WORKERS_SUBDOMAIN = "rytecode.workers.dev";
+
+/**
+ * Resolve which Worker origin should handle this Pages request.
+ *
+ * Production Pages (`main`) → production Worker.
+ * Branch / commit previews → matching Workers Builds branch preview alias,
+ * so new API routes (e.g. /info) are available before merge.
+ */
+function workerOrigin(env: Record<string, unknown> | undefined): string {
+  const branch =
+    typeof env?.CF_PAGES_BRANCH === "string" ? env.CF_PAGES_BRANCH.trim() : "";
+  if (!branch || branch === "main") return PROD_WORKER_ORIGIN;
+
+  // Workers Builds branch alias: <sanitized-branch>-<worker-name>.<subdomain>
+  // e.g. cursor/lightbox-info-panel-94d0 → cursor-lightbox-info-panel-94d0-digital-archive...
+  const sanitized = branch.replace(/[^a-zA-Z0-9-]/g, "-").replace(/-+/g, "-");
+  return `https://${sanitized}-${WORKER_NAME}.${WORKERS_SUBDOMAIN}`;
+}
 
 /**
  * Proxy /api/* from Pages (same origin) to the API Worker so session cookies
@@ -6,9 +26,10 @@ const WORKER_ORIGIN = "https://digital-archive.rytecode.workers.dev";
  */
 export const onRequest: PagesFunction = async (context) => {
   const incoming = new URL(context.request.url);
+  const origin = workerOrigin(context.env as Record<string, unknown>);
   const target = new URL(
     `${incoming.pathname}${incoming.search}`,
-    WORKER_ORIGIN,
+    origin,
   );
 
   const headers = new Headers(context.request.headers);
@@ -54,6 +75,9 @@ export const onRequest: PagesFunction = async (context) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "proxy_failed";
-    return Response.json({ error: "proxy_failed", message }, { status: 502 });
+    return Response.json(
+      { error: "proxy_failed", message, worker_origin: origin },
+      { status: 502 },
+    );
   }
 };
