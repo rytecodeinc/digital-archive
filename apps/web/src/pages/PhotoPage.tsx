@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Lightbox } from "../components/Lightbox";
+import type { PhotoRouteState } from "../components/PhotoSections";
 import { api, type TimelineItem, type User } from "../lib/api";
 
 export function PhotoPage({
@@ -13,23 +14,41 @@ export function PhotoPage({
   const { publicId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const from =
-    (location.state as { from?: string } | null)?.from ||
-    "/photos";
-  const [item, setItem] = useState<TimelineItem | null>(null);
+  const routeState = (location.state as PhotoRouteState | null) || null;
+  const from = routeState?.from || "/photos";
+  const canDelete = routeState?.canDelete ?? true;
+
+  const [fetchedItem, setFetchedItem] = useState<TimelineItem | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!routeState?.items?.length);
+
+  const items = useMemo(() => {
+    if (routeState?.items?.length) return routeState.items;
+    return fetchedItem ? [fetchedItem] : [];
+  }, [routeState?.items, fetchedItem]);
+
+  const index = useMemo(() => {
+    const idx = items.findIndex((item) => item.public_id === publicId);
+    return idx >= 0 ? idx : 0;
+  }, [items, publicId]);
 
   useEffect(() => {
+    // Prefer the gallery list passed via navigation state so prev/next works.
+    if (routeState?.items?.length) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setItem(null);
+    setFetchedItem(null);
 
     api
       .mediaByPublicId(publicId)
       .then((res) => {
-        if (!cancelled) setItem(res.item);
+        if (!cancelled) setFetchedItem(res.item);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -43,7 +62,20 @@ export function PhotoPage({
     return () => {
       cancelled = true;
     };
-  }, [publicId]);
+  }, [publicId, routeState?.items]);
+
+  function goToIndex(nextIndex: number) {
+    const next = items[nextIndex];
+    if (!next?.public_id) return;
+    navigate(`/photo/${next.public_id}`, {
+      replace: true,
+      state: {
+        from,
+        items,
+        canDelete,
+      } satisfies PhotoRouteState,
+    });
+  }
 
   if (loading) {
     return (
@@ -53,7 +85,7 @@ export function PhotoPage({
     );
   }
 
-  if (error || !item) {
+  if (error || !items.length || !items[index]) {
     return (
       <div className="login-page">
         <p className="error">{error || "Photo not found"}</p>
@@ -70,18 +102,33 @@ export function PhotoPage({
     );
   }
 
-  const inTrash = Boolean(item.deleted_at);
+  const current = items[index];
+  const inTrash = Boolean(current.deleted_at);
 
   return (
     <Lightbox
-      items={[item]}
-      index={0}
-      canDelete={!inTrash}
+      items={items}
+      index={index}
+      canDelete={canDelete && !inTrash}
       onClose={() => navigate(from)}
-      onNavigate={() => undefined}
+      onNavigate={goToIndex}
       onDelete={async (id) => {
         await api.deleteMedia(id);
-        navigate(from === "/trash" ? "/photos" : from);
+        const nextItems = items.filter((item) => item.id !== id);
+        if (!nextItems.length) {
+          navigate(from === "/trash" ? "/photos" : from);
+          return;
+        }
+        const nextIndex = Math.min(index, nextItems.length - 1);
+        const next = nextItems[nextIndex];
+        navigate(`/photo/${next.public_id}`, {
+          replace: true,
+          state: {
+            from,
+            items: nextItems,
+            canDelete,
+          } satisfies PhotoRouteState,
+        });
       }}
     />
   );
