@@ -128,4 +128,45 @@ Confirm Worker health first:
 
 `https://digital-archive.rytecode.workers.dev/api/health`
 
+### Pages → API (current production setup)
+
+Production builds default `VITE_API_BASE_URL` to `https://digital-archive.rytecode.workers.dev` so the UI talks to the Worker even when the Pages `/api` Function is inactive (405).
+
+Optional override (Pages → Settings → Environment variables, then rebuild):
+
+| Pages env var | Value |
+|---|---|
+| `VITE_API_BASE_URL` | `https://digital-archive.rytecode.workers.dev` |
+
+Login cookies use `SameSite=None; Secure` when the request `Origin` is cross-site (Pages → Worker).
+
+### Worker `DATABASE_URL` (required for login)
+
+Login currently fails with:
+
+`proxy request failed, cannot connect to the specified address`
+
+That means the Worker cannot open Postgres. Fix the Worker secret:
+
+1. In Supabase → Project Settings → Database → **Connection string** → **Session pooler**
+2. Use host like `aws-1-us-west-2.pooler.supabase.com` and port `5432`
+3. **Do not** use `db.<project>.supabase.co` (often IPv6-only; Workers cannot connect)
+4. URL-encode special characters in the password (`!` → `%21`)
+5. Update the secret:
+
+```bash
+cd apps/api
+npx wrangler secret put DATABASE_URL
+```
+
+Example shape:
+
+```text
+postgresql://postgres.sqtdpkvzeyckerxqfeic:[URL-ENCODED-PASSWORD]@aws-1-us-west-2.pooler.supabase.com:5432/postgres
+```
+
+After updating, redeploy/promote the Worker (or wait for the next Workers Build), then test:
+
+`POST https://digital-archive.rytecode.workers.dev/api/auth/login`
+
 
