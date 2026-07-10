@@ -36,8 +36,20 @@ export type AlbumSummary = {
   cover_url: string | null;
 };
 
+// Production Pages often cannot rely on Functions proxying /api; call the Worker
+// directly. Override with VITE_API_BASE_URL at build time if needed.
+const API_BASE = (
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD ? "https://digital-archive.rytecode.workers.dev" : "")
+).replace(/\/$/, "");
+
+function apiUrl(path: string) {
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  return `${API_BASE}${path}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
@@ -97,7 +109,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   uploadContent: async (proxyUrl: string, file: File, contentType: string) => {
-    const res = await fetch(proxyUrl, {
+    const res = await fetch(apiUrl(proxyUrl), {
       method: "PUT",
       credentials: "include",
       headers: {
